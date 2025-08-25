@@ -1,0 +1,40 @@
+
+Research:
+
+Keywords
+// User-Simulaton (Administrator im Speziellen)
+// Evaluierungsmethoden
+// Research LLM-Aktivitäten
+// LLMs and logs (Log Explainability/Generierung/Parsing/...)
+
+
+Papers:
+--> Generic User Modeling Systems
+--> Differences between Research Log-Database
+--> LLM-based event log analysis techniques
+*** Literatur Fragen an Viktor ***
+
+
+
+NEU
+# sudo -i Alternativ User in visudo schmeißen: mlanger ALL=(ALL:ALL) ALL
+
+# Members of the admin group may gain root privileges
+%admin ALL=(ALL) ALL
+Zeichenbegrenzung ist ein Argument
+
+# Zusammenfassung machen ab einem gewissen Punkt damit nicht zu viele Tokens benötigt werden
+
+
+
+
+Daniel Arb.
+
+LLM ist nicht deterministisch
+Vergleich zwischen Regel-basierter Methode und LLM-Approach!
+Großer Vorteil von LLM: Variabilitiät
+Open-Source Modelle
+Wie bekommen wir Varianz rein!
+
+
+Zusammenfassung + Literaturliste (per Email!)

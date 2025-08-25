@@ -1,0 +1,14 @@
+Site is Not Responding
+SSH login -> check apache2 service status -> check apache error log -> restart/reload apache2 -> fix config if needed -> verify site
+
+Database Connection Failure
+SSH login -> check mysql/mariadb service status -> check db error log -> start/restart service -> verify Nextcloud config.php -> repair db if needed -> verify site
+
+Slow Nextcloud Performance
+SSH login -> check CPU/mem/io usage -> verify Nextcloud cron job -> enable APCu + Redis -> edit config.php -> restart apache2 -> verify performance
+
+Large File Uploads Failing
+SSH login -> check php.ini upload_max_filesize + post_max_size -> check Apache LimitRequestBody -> increase limits -> restart apache2 -> verify upload
+
+Stuck in Maintenance Mode After Update
+SSH login -> check config.php maintenance flag -> occ maintenance:mode --off -> occ upgrade -> disable problematic apps -> verify site

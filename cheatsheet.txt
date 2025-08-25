@@ -1,0 +1,32 @@
+User management:
+occ user:add <username>
+occ user:delete <username>
+occ user:resetpassword <username>
+occ user:list
+occ group:add <group>
+occ group:delete <group>
+occ group:adduser <group> <username>
+occ group:removeuser <group> <username>
+occ group:list Maintenance:
+occ maintenance:mode --on
+occ maintenance:mode --off
+occ maintenance:repair
+occ upgrade Configuration:
+occ config:system:set <key> <value> [--type <type>]
+occ config:system:get <key>
+occ config:system:delete <key>
+occ config:app:set <app> <key> <value> [--type <type>]
+occ config:app:get <app> <key>
+occ config:app:delete <app> <key> App management:
+occ app:enable <app-id>
+occ app:disable <app-id>
+occ app:list File operations:
+occ files:scan --all
+occ files:cleanup Security:
+occ setupchecks
+occ security:certificates
+occ security:certificates:import <path/to/certificate>
+occ security:certificates:remove <certificate ID> Background jobs and cron:
+occ background:ajax
+occ background:cron
+occ background:webcron

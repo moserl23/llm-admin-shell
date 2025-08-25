@@ -1,0 +1,30 @@
+echo changeme | sudo -S systemctl status apache2 --no-pager -n 50
+● apache2.service - The Apache HTTP Server
+     Loaded: loaded (8;;f
+---[output clipped]---
+1 00:00:02 server systemd[1]: Reloaded apache2.service - The Apache HT…ver.
+Hint: Some lines were ellipsized, use -l to show in full.
+echo changeme | sudo -S tail -n 50 /var/log/apache2/nextclouds.local-error.log
+echo changeme | sudo -S systemctl status php8.3-fpm --no-pager -n 50 0
+Unit php8.3-fpm.service could not be found.
+echo changeme | sudo -S tail -n 50 /var/log/apache2/error.log
+[Thu Aug 21 00:00:02.800638 2025] [mpm_prefork:notice] [pid 9710] AH00163:
+---[output clipped]---
+d -- resuming normal operations
+[Thu Aug 21 00:00:02.800678 2025] [core:notice] [pid 9710] AH00094: Command line: '/usr/sbin/apache2'
+echo changeme | sudo -S -u www-data /usr/bin/php /var/www/nextcloud/occ config:system:get maintenance
+false
+echo changeme | sudo -S tail -n 50 /var/www/nextcloud/data/nextcloud.log
+{"reqId":"ed5BRbnZUOZHFUe90FZU","level":0,"time":"2025-08-21T03
+---[output clipped]---
+"message":"Console command executed: config:system:get maintenance","userAgent":"--","version":"31.0.7.1","data":{"app":"admin_audit"}}
+echo changeme | sudo -S egrep -Rni 'proxy_fcgi|fcgi|fpm|SetHandler.*proxy' /etc/apache2/sites-enabled /etc/apache2/conf-enabled | head -n 50
+echo changeme | sudo -S apache2ctl -M | egrep -i 'php|proxy|fcgi|mpm|rewrite|headers' | head -n 50
+AH00558: apache2: Could not reliably 
+---[output clipped]---
+00:27ff:fe3f:3739. Set the 'ServerName' directive globally to suppress this message
+ mpm_prefork_module (shared)
+ php_module (shared)
+echo changeme | sudo -S tail -n 500 /var/log/apache2/nextcloud.local-access.log | grep ' 503 ' | tail -n 50
+curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/
+302
