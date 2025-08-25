@@ -120,6 +120,7 @@ def clip_middle(text, max_chars, marker = "\n---[output clipped]---\n"):
 if __name__ == "__main__":
 
 
+    # Settings
     NUMBER_OF_INTERACTIONS = 10
     MIN_SLEEP = 0.8
     MAX_SLEEP = 3.0   
@@ -155,6 +156,7 @@ if __name__ == "__main__":
     logs = run_cmd('echo "changeme" | sudo -S tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
     with open("logs_audit.txt", "w", encoding="utf-8") as f:
         f.write(logs)
+
 
 
 
