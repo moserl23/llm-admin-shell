@@ -1,4 +1,3 @@
-
 Research:
 
 Keywords
@@ -29,7 +28,6 @@ Zeichenbegrenzung ist ein Argument
 
 
 Daniel Arb.
-
 LLM ist nicht deterministisch
 Vergleich zwischen Regel-basierter Methode und LLM-Approach!
 Großer Vorteil von LLM: Variabilitiät
@@ -38,3 +36,37 @@ Wie bekommen wir Varianz rein!
 
 
 Zusammenfassung + Literaturliste (per Email!)
+
+
+
+
+
+
+
+
+Synch 28.08.2025:
+explizite Denkschritte. Chane of Thought.
+leichte Variationen -> viele LogDaten -> Aminer trainieren (Similarity Index)
+Complexity Index
+Unterscheiden sich die Variationen untereinander mehr als LLM/Mensch
+Sleeps abhängig von der Länge vom Command
+Wie soll Aminer konfiguriert werden: Configuration Engine
+
+Tasks oder Issues: Zum Beispiel User anlegen!
+Metrik: schafft er es und glaubt er dass er es geschafft hat. --> Geht an der Problemstellung vorbei --> Schafft LLM es auf die gleich Art wie ein Mensch nicht.
+Komplexibilität sollte gering gehalten werden. Komplexibilität für Variationen!
+
+Unterschiedliche Szenarien, leicht, mittel, schwer
+
+Hypothese: Je einfacher der Task ist, desto schwieriger ist die Unterscheidung Mensch/LLM.
+
+
+
+Plan:
+--> Chain of Thoughts rein bringen
+--> Aminer mit logs trainieren
+--> Komplexitätsindex
+--> Sleep abhängig von Command Länge
+--> Nicht nur Issues sondern auch auf Tasks erweitern!
+
+

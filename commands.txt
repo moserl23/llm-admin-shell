@@ -1,0 +1,19 @@
+tail -n 100 /var/log/apache2/nextcloud.local-error.log
+grep -n "memcache" /var/www/nextcloud/config/config.php | sed -E 's/[[:space:]]+/ /g' | head -n 50
+php -m | grep -Ei 'redis|apcu'
+systemctl restart apache2
+curl -s -o /dev/null -w "%{http_code}\n" -H "Host: nextcloud.local" http://127.0.0.1/; tail -n 20 /var/log/apache2/nextcloud.local-error.log
+ls -1 /etc/php/8.3/apache2/conf.d | grep -Ei 'redis|apcu' || true
+ts=$(date +%F_%H%M%S); cp -a /var/www/nextcloud/config/config.php /var/www/nextcloud/config/config.php.bak.$ts && sed -ri "/'memcache.locking'[[:space:]]*=>[[:space:]]*'[^']*Redis'/d; s|'memcache.local'[[:space:]]*=>[[:space:]]*'[^']*'|'memcache.local' => '\\OC\\Memcache\\APCu'|g" /var/www/nextcloud/config/config.php && systemctl reload apache2 && curl -s -o /dev/null -w "%{http_code}\n" -H "Host: nextcloud.local" http://127.0.0.1/index.php
+tail -n 50 /var/log/apache2/nextcloud.local-error.log
+ts=$(date +%F_%H%M%S); cp -a /var/www/nextcloud/config/config.php /var/www/nextcloud/config/config.php.bak.$ts && sed -ri "/'memcache.locking'[[:space:]]*=>/d; s|'memcache.local'[[:space:]]*=>[[:space:]]*'[^']*'|'memcache.local' => '\\OC\\Memcache\\ArrayCache'|g" /var/www/nextcloud/config/config.php && systemctl reload apache2 && curl -s -o /dev/null -w "%{http_code}\n" -H "Host: nextcloud.local" http://127.0.0.1/index.php
+php -l /var/www/nextcloud/config/config.php; grep -n "memcache" /var/www/nextcloud/config/config.php | sed -E 's/[[:space:]]+/ /g' || true; tail -n 30 /var/log/apache2/nextcloud.local-error.log
+sed -ri -e "s|('memcache\.local'[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\\OC\\Memcache\\ArrayCache'|" -e "s|('memcache\.locking'[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\\OC\\Memcache\\ArrayCache'|" /var/www/nextcloud/config/config.php
+grep -nE "memcache\.(local|locking|distributed)" /var/www/nextcloud/config/config.php
+sed -ri 's|('\''memcache\.local'\''[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\''\OC\Memcache\ArrayCache'\''|; s|('\''memcache\.locking'\''[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\''\OC\Memcache\ArrayCache'\''|; s|('\''memcache\.distributed'\''[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\''\OC\Memcache\ArrayCache'\''|' /var/www/nextcloud/config/config.php
+sed -ri "s|('memcache\.local'[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\\OC\\Memcache\\ArrayCache'|; s|('memcache\.locking'[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\\OC\\Memcache\\ArrayCache'|; s|('memcache\.distributed'[[:space:]]*=>)[[:space:]]*'[^']*'|\1 '\\OC\\Memcache\\ArrayCache'|" /var/www/nextcloud/config/config.php
+sed -ri "s|'OCMemcacheArrayCache'|'\OC\Memcache\ArrayCache'|g" /var/www/nextcloud/config/config.php
+grep -nE "memcache\.(local|locking|distributed)|APCu|Redis|ArrayCache" /var/www/nextcloud/config/config.php
+perl -0777 -pe 's/\x27OCMemcacheArrayCache\x27/\x27\\OC\\Memcache\\ArrayCache\x27/g' -i /var/www/nextcloud/config/config.php
+curl -s -o /dev/null -w "%{http_code}\n" -H 'Host: nextcloud.local' http://127.0.0.1/
+curl -s -o /dev/null -w "%{http_code}\n" -H 'Host: nextcloud.local' -L http://127.0.0.1/

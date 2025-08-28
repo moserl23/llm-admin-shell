@@ -1,0 +1,27 @@
+The administrator investigated persistent Nextcloud PHP fatal errors related to memcache configuration
+ Key findings and actions:
+
+- Nextcloud's config
+php references Redis and APCu memcache modules for caching and locking
+
+- Apache error logs showed fatal errors indicating Redis and APCu PHP modules were either missing, disabled, or causing class redeclaration conflicts
+
+- Attempts to switch memcache
+local and memcache
+locking settings in config
+php to use APCu and then ArrayCache failed, resulting in HTTP 500 errors and continued memcache-related fatal errors
+
+- PHP Redis and APCu modules were present in the system's PHP conf
+d directory but apparently not properly enabled or conflicting
+
+- Additional errors included denied access to /var/www/nextcloud/data/
+ncdata and a missing script /var/www/nextcloud/php_redis_check
+php
+
+- Multiple sed commands were used to update memcache settings in config
+php to '\\OC\\Memcache\\ArrayCache', but errors persisted
+
+- HTTP status checks showed initial 302 redirects followed by successful 200 responses after some config changes, but fatal errors remained in logs
+
+
+Summary: Nextcloud's memcache configuration is broken due to missing, disabled, or conflicting PHP Redis and APCu modules, causing fatal PHP errors and caching failures despite config adjustments
