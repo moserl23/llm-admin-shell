@@ -50,6 +50,7 @@ Rules:
 3. No interactive prompts. Never use interactive/full-screen tools.
 4. Keep command output short - when accessing large log files or content-heavy files, always use filters like grep, tail, or head.
 5. Prefer safe read-only checks before destructive actions.
+6. Frequently verify whether the issue still persists.
 
 Reference:
 Examples - Admin Routines:
@@ -66,9 +67,9 @@ File Editing (non-interactive):
 # user prompt
 USER_PROMPT = (
     "Return ONLY JSON. "
-    "Either {'cmd':'<command>'} OR {'stop': true, 'reason':'<short reason>'}. "
+    "Either {\"cmd\":\"<command>\"} OR {\"stop\": true, \"reason\":\"<short reason>\"}. "
     "Given the recent command output, propose the next single command. "
-    "If the problem appears fixed or more commands are unlikely to help, return the stop JSON."
+    "If verification shows the problem is resolved, or if further commands are unlikely to help, return the stop JSON."
 )
 
 ################################################ LLM-Client, interactive-shell and sentinel ################################################
@@ -78,7 +79,7 @@ SENTINEL = "<<<READY>>> "
 
 
 ################################################ API-callers ################################################
-def summarize_transcript(text: str, model: str, target_chars: int = 600) -> str:
+def summarize_transcript(text: str, model: str, target_tokens: int = 600) -> str:
     """
     Summarize a transcript of a system administrator interacting with a bash shell
     into a compact plain-text form.
@@ -98,7 +99,7 @@ def summarize_transcript(text: str, model: str, target_chars: int = 600) -> str:
             {"role": "user", "content": text},
         ],
         temperature=0.0,                  # deterministic summaries
-        max_tokens=target_chars           # cap to prevent runaway outputs
+        max_tokens=target_tokens           # cap to prevent runaway outputs
     )
 
     return chat.choices[0].message.content.strip()
@@ -107,7 +108,7 @@ def summarize_transcript(text: str, model: str, target_chars: int = 600) -> str:
 def summarize_terminal(
     text: str,
     model: str,
-    target_chars: int = 600,
+    target_tokens: int = 600,
     context_window: int = 10_000
 ) -> str:    
     """
@@ -127,12 +128,12 @@ def summarize_terminal(
             {"role": "user", "content": text[-context_window:]},
         ],
         temperature=0.0,                  # deterministic summaries
-        max_tokens=target_chars           # cap to prevent runaway outputs
+        max_tokens=target_tokens           # cap to prevent runaway outputs
     )
 
     return chat.choices[0].message.content.strip()
 
-def summarize_final(text: str, model: str, target_chars: int = 600) -> str:
+def summarize_final(text: str, model: str, target_tokens: int = 600) -> str:
     """
     Summarize a bash-terminal output.
     """
@@ -150,10 +151,10 @@ def summarize_final(text: str, model: str, target_chars: int = 600) -> str:
             {"role": "user", "content": text},
         ],
         temperature=0.0,                  # deterministic summaries
-        max_tokens=target_chars           # cap to prevent runaway outputs
+        max_tokens=target_tokens           # cap to prevent runaway outputs
     )
 
-    return "\n".join(chat.choices[0].message.content.strip().split("."))
+    return chat.choices[0].message.content.strip()
 
 
 def ask_LLM(
@@ -235,7 +236,7 @@ def run_cmd(cmd: str) -> str:
 if __name__ == "__main__":
 
     # Settings
-    NUMBER_OF_INTERACTIONS = 40
+    NUMBER_OF_INTERACTIONS = 20
     TEMPERATUR = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
     MIN_SLEEP = 0.1
     MAX_SLEEP = 0.2   
@@ -247,7 +248,7 @@ if __name__ == "__main__":
     
     ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
 
-    model_admin_agent = "gpt-5"
+    model_admin_agent = "gpt-4.1-mini"
     model_transcript_summarizer = "gpt-4.1-mini"
     model_terminal_summarizer = "gpt-4.1-mini"
     
@@ -268,7 +269,7 @@ if __name__ == "__main__":
         # Chain of Interactions
         output = ""
         for _ in range(NUMBER_OF_INTERACTIONS):
-            decision = ask_LLM(output, issue=ISSUE, model=model_admin_agent, temperatur=TEMPERATUR) 
+            decision = ask_LLM(output, issue=ISSUE, model=model_admin_agent, temperatur=TEMPERATUR)
 
             # Stop condition from the LLM
             if decision.get("stop"):
@@ -289,7 +290,12 @@ if __name__ == "__main__":
             if len(result) > MAX_LENGTH_TERMINAL_OUTPUT:
                 summary = summarize_terminal(cmd + "\n" + result, model=model_terminal_summarizer, context_window=TERMINAL_CONTEXT_WINDOW)
                 tail = result[-TAIL_LENGTH_TERMINAL:]
-                result = f"[summary]\n{summary}\n---[recent tail]---\n{tail}"
+                result = (
+                    "<<<TSUM>>>\n"
+                    f"{summary}\n"
+                    "<<<TTAIL>>>\n"
+                    f"{tail}"
+                )
             output += f"\n$ {cmd}\n{result}\n"
             # summarize current transcript if it is too long
             if len(output) > MAX_LENGTH_TRANSCRIPT:
