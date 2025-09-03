@@ -13,8 +13,6 @@ from drain3.template_miner_config import TemplateMinerConfig
 
 # ---------- CONFIG ----------
 LOG_PATH = Path("logs_audit.txt")
-OUTPUT_DIR = Path("drain_out")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Sequence-Length and Stride
 WINDOW_SIZE = 10     # sequence window size as in the paper
