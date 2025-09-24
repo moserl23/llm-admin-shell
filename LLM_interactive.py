@@ -6,6 +6,7 @@ import json
 import time
 import random
 import re
+import math
 
 
 ################################################ system-prompt and user-prompt ################################################
@@ -27,7 +28,7 @@ Connection context:
 - The following environment variables are always set:
     export SYSTEMD_URLIFY=0
     export SYSTEMD_PAGER=
-    export SYSTEMD_COLORS=0    
+    export SYSTEMD_COLORS=0
 
 Assumptions:
 - Nextcloud is installed at /var/www/nextcloud
@@ -44,13 +45,12 @@ Rules:
    a) A single command to run:
       {{"cmd":"<command>"}}
 
-   b) Stop signal when you believe the issue is resolved or further commands are not helpful:
+   b) Stop signal when the issue is resolved or the task is completed, or if further commands would not be useful:
       {{"stop": true, "reason": "<short reason (max 120 chars)>"}}
 2. Never produce explanations, only the JSON.
 3. No interactive prompts. Never use interactive/full-screen tools.
 4. Keep command output short - when accessing large log files or content-heavy files, always use filters like grep, tail, or head.
 5. Prefer safe read-only checks before destructive actions.
-6. Frequently verify whether the issue still persists.
 
 Reference:
 Examples - Admin Routines:
@@ -103,7 +103,6 @@ def summarize_transcript(text: str, model: str, target_tokens: int = 600) -> str
     )
 
     return chat.choices[0].message.content.strip()
-
 
 def summarize_terminal(
     text: str,
@@ -170,13 +169,34 @@ def ask_LLM(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": USER_PROMPT + f" Issue: {issue}" + f" Recent output: {prev_output} "}
+            {"role": "user", "content": USER_PROMPT + f" Issue/Task: {issue}" + f" Recent output: {prev_output} "}
         ],
         response_format={"type": "json_object"},
         temperature=temperatur
     )
     return json.loads(chat.choices[0].message.content)
 
+def ask_LLM_for_verification(issue: str, model: str) -> dict:
+    """
+    Ask the LLM for ONE safe, read-only verification command.
+    Returns a JSON dict like {"cmd": "<command>"}.
+    """
+    chat = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    'Return ONLY JSON: {"cmd":"<command>"}\n'
+                    "Propose ONE safe, read-only verification command to check whether the issue persists or the task has been solved.\n"
+                    f"Issue/Task: {issue}"
+                ),
+            },
+        ],
+        response_format={"type": "json_object"}
+    )
+    return json.loads(chat.choices[0].message.content)
 
 ################################################ helpers ################################################
 def connect_root_setSentinel() -> None:
@@ -231,26 +251,38 @@ def run_cmd(cmd: str) -> str:
     return "\n".join(parts).strip()
 
 
-
 ################################################ main ################################################
 if __name__ == "__main__":
 
-    # Settings
-    NUMBER_OF_INTERACTIONS = 1
+    # =====================Settings-START=====================
+    ### LLM
+    NUMBER_OF_INTERACTIONS = 30
     TEMPERATUR = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
-    MIN_SLEEP = 0.1
-    MAX_SLEEP = 0.2   
+
+    ### Verification
+    FREQUENCY_VERIFICATION = 3
+  
+    ### Length thresholds for different content
     MAX_LENGTH_TERMINAL_OUTPUT = 2000
     MAX_LENGTH_TRANSCRIPT = 6000
     TAIL_LENGTH_TERMINAL = 500
     TAIL_LENGTH_TRANSCRIPT = 1500
     TERMINAL_CONTEXT_WINDOW = 10_000
+
+    ### time delay
+    BASE_DELAY = 0.2      # minimum thinking time (s)
+    PER_CHAR = 0.01       # extra seconds per character
+    VARIABILITY = 0.2     # fraction of mean used as stddev
+    MAX_DELAY = 5.0       # hard cap
     
+    ### Issue or Task for the Agent
     ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
 
+    ### model selection
     model_admin_agent = "gpt-5-mini"
     model_transcript_summarizer = "gpt-4.1-mini"
     model_terminal_summarizer = "gpt-4.1-mini"
+    # =====================Settings-END=====================
     
     # protocol commands used
     commands_list = []
@@ -265,28 +297,43 @@ if __name__ == "__main__":
     run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
     run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
 
+    # generate verification command
+    verify_cmd = ask_LLM_for_verification(ISSUE, model_admin_agent)["cmd"]
+
     try:
         # Chain of Interactions
-        output = ""
-        for _ in range(NUMBER_OF_INTERACTIONS):
-            decision = ask_LLM(output, issue=ISSUE, model=model_admin_agent, temperatur=TEMPERATUR)
-
-            # Stop condition from the LLM
-            if decision.get("stop"):
-                msg = decision.get("reason", "LLM indicated resolution.")
-                print(f"# Stopping: {msg}")
-                break
-
-            # Otherwise, run one command
-            cmd = decision.get("cmd")
-            if not cmd:
-                print("# No 'cmd' provided; stopping to avoid undefined behavior.")
-                break
+        output, raw_output = "", ""
+        for i in range(NUMBER_OF_INTERACTIONS):
+            if i % FREQUENCY_VERIFICATION == 0:
+                cmd = verify_cmd
+            else:
+                decision = ask_LLM(output, issue=ISSUE, model=model_admin_agent, temperatur=TEMPERATUR)
+                # Stop condition from the LLM
+                if decision.get("stop"):
+                    msg = decision.get("reason", "LLM indicated resolution.")
+                    print(f"# Stopping: {msg}")
+                    break
+                # Otherwise, run one command
+                cmd = decision.get("cmd")
+                if not cmd:
+                    print("# No 'cmd' provided; stopping to avoid undefined behavior.")
+                    break
 
             # log the command
             commands_list.append(cmd)
+
+            # simulate thinking dependent on command length
+            mean_delay = BASE_DELAY + PER_CHAR * len(cmd)
+            stddev = mean_delay * VARIABILITY
+            delay = max(BASE_DELAY, min(random.gauss(mean_delay, stddev), MAX_DELAY))
+            print(f"# sleep {delay:.2f}s (cmd length {len(cmd)})")
+            time.sleep(delay)
+
             # execute the command in the interactive terminal
             result = run_cmd(cmd)
+            # update raw output
+            raw_output += f"\n$ {cmd}\n{result}\n"
+            # summarize terminal output if it is too long
             if len(result) > MAX_LENGTH_TERMINAL_OUTPUT:
                 try:
                     summary = summarize_terminal(cmd + "\n" + result, model=model_terminal_summarizer, context_window=TERMINAL_CONTEXT_WINDOW)
@@ -299,7 +346,7 @@ if __name__ == "__main__":
                     )
                 except Exception as e:
                     # Fallback: no summary, just clip the tail
-                    print(f"# Summarizer failed: {e}")
+                    print(f"# Terminal-Summarizer failed: {e}")
                     result = (
                         "[clipped]\n"
                         f"{result[-TAIL_LENGTH_TERMINAL:]}"
@@ -315,10 +362,6 @@ if __name__ == "__main__":
             with open("output.txt", "w", encoding="utf-8") as f:
                 f.write(output)
 
-            # simulate thinking
-            delay = random.uniform(MIN_SLEEP, MAX_SLEEP)
-            print(f"# sleep {delay:.2f}s")
-            time.sleep(delay)
     finally:
         # write commands
         with open("commands.txt", "w", encoding="utf-8") as f:
@@ -328,6 +371,9 @@ if __name__ == "__main__":
         # write output to file
         with open("output.txt", "w", encoding="utf-8") as f:
             f.write(output)
+        # write raw_output to file
+        with open("raw_output.txt", "w", encoding="utf-8") as f:
+            f.write(raw_output)
         # extract new logs and write to file
         logs = run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
         with open("LLM_nextcloud.log", "w", encoding="utf-8") as f:

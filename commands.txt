@@ -1,1 +1,10 @@
-tail -n 200 /var/log/apache2/nextcloud.local-error.log
+curl -s --connect-timeout 5 -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/
+tail -n 60 /var/log/apache2/nextcloud.local-error.log
+echo '--- /var/log/apache2/nextcloud.local-error.log (last 200 lines) ---'; tail -n 200 /var/log/apache2/nextcloud.local-error.log 2>/dev/null || true; echo '--- /var/www/nextcloud/data/nextcloud.log (last 200 lines) ---'; tail -n 200 /var/www/nextcloud/data/nextcloud.log 2>/dev/null || true
+curl -s --connect-timeout 5 -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/
+curl -I -s --connect-timeout 5 -H 'Host: nextcloud.local' http://127.0.0.1/
+grep -nE 'trusted|overwrite|overwritehost|overwriteprotocol|overwrite\.cli\.url|trusted_proxies' /var/www/nextcloud/config/config.php || true
+curl -s --connect-timeout 5 -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/
+head -n 80 /var/www/nextcloud/config/config.php
+/usr/bin/php /var/www/nextcloud/occ status
+curl -s --connect-timeout 5 -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/

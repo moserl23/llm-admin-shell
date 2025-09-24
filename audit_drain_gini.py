@@ -12,7 +12,7 @@ from drain3 import TemplateMiner
 from drain3.template_miner_config import TemplateMinerConfig
 
 # ---------- CONFIG ----------
-LOG_PATH = Path("logs_audit.txt")
+LOG_PATH = Path("audit.log")
 
 # Sequence-Length and Stride
 WINDOW_SIZE = 10     # sequence window size as in the paper
