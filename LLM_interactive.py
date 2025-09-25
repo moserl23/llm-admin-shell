@@ -7,19 +7,24 @@ import time
 import random
 import re
 import math
+from utils import *
 
 
 ################################################ system-prompt and user-prompt ################################################
-# read relevant files
-with open("examples.txt", "r", encoding="utf-8") as file:
-    examples_content = file.read()
-with open("cheatsheet.txt", "r", encoding="utf-8") as file:
-    cheatsheet_content = file.read()
-with open("fileEditingRoutine.txt", "r", encoding="utf-8") as file:
-    fileEditingRoutine = file.read()
+
 
 # system prompt
 SYSTEM_PROMPT = f"""
+Reference:
+Examples - Admin Routines:
+{examples_content}
+
+Cheat Sheet - occ Commands:
+{cheatsheet_content}
+
+File Editing (non-interactive):
+{fileEditingRoutine}
+
 You are a Linux administrator for Ubuntu 24.04 running a LAMP stack with Nextcloud (PHP 8.3.6).
 
 Connection context:
@@ -51,17 +56,6 @@ Rules:
 3. No interactive prompts. Never use interactive/full-screen tools.
 4. Keep command output short - when accessing large log files or content-heavy files, always use filters like grep, tail, or head.
 5. Prefer safe read-only checks before destructive actions.
-
-Reference:
-Examples - Admin Routines:
-{examples_content}
-
-Cheat Sheet - occ Commands:
-{cheatsheet_content}
-
-File Editing (non-interactive):
-{fileEditingRoutine}
-
 """
 
 # user prompt
@@ -72,10 +66,8 @@ USER_PROMPT = (
     "If verification shows the problem is resolved, or if further commands are unlikely to help, return the stop JSON."
 )
 
-################################################ LLM-Client, interactive-shell and sentinel ################################################
-child = pexpect.spawn("/bin/bash", ["-i"], encoding="utf-8", timeout=30)
+################################################ LLM-Client ################################################
 client = OpenAI(api_key=API_KEY)
-SENTINEL = "<<<READY>>> "
 
 
 ################################################ API-callers ################################################
@@ -160,7 +152,7 @@ def ask_LLM(
     prev_output: str,
     issue: str,
     model: str,
-    temperatur: float = 1
+    temperature: float = 1
 ) -> dict:
     '''
     Query the LLM with the current issue context and recent output.
@@ -172,7 +164,7 @@ def ask_LLM(
             {"role": "user", "content": USER_PROMPT + f" Issue/Task: {issue}" + f" Recent output: {prev_output} "}
         ],
         response_format={"type": "json_object"},
-        temperature=temperatur
+        temperature=temperature
     )
     return json.loads(chat.choices[0].message.content)
 
@@ -198,57 +190,7 @@ def ask_LLM_for_verification(issue: str, model: str) -> dict:
     )
     return json.loads(chat.choices[0].message.content)
 
-################################################ helpers ################################################
-def connect_root_setSentinel() -> None:
-    '''
-    Establish an SSH connection to the server, escalate to a root shell via sudo -i,
-    and set a unique sentinel prompt (PS1) for reliable command synchronization
-    in the pexpect session.
-    '''
-    # connecting to server
-    cmd = "ssh server"
-    child.sendline(cmd)
-    child.expect(r"[$#] ")
-    child.expect(r"[$#] ")
-    # open root-shell
-    cmd = "sudo -i"
-    child.sendline(cmd)
-    child.expect(r"[$#] ")
-    # setting environment variable
-    cmd = f"PS1='{SENTINEL}'"
-    child.sendline(cmd)
-    child.expect(SENTINEL)
-    child.expect(SENTINEL)
 
-
-def clean(text: str) -> str:
-    '''
-    Clean a string by removing unwanted terminal control sequences and
-    non-printable characters.
-    '''
-    text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
-    text = re.sub(r'\x1D', '', text)
-    return text
-
-
-def run_cmd(cmd: str) -> str:
-    '''
-    Execute a shell command via the active pexpect child process, 
-    wait for the sentinel prompt, and return the cleaned output.
-    '''
-    child.sendline(cmd)
-    try:
-        child.expect(SENTINEL, timeout=25)
-    except pexpect.TIMEOUT:
-        print("Timeout was reached!")
-        child.send('\x03')  # Ctrl-C
-        child.expect(SENTINEL, timeout=5)
-    raw = clean(child.before)
-    # remove command from output
-    parts = raw.splitlines()
-    if parts and parts[0].strip() == cmd.strip():
-        parts = parts[1:]
-    return "\n".join(parts).strip()
 
 
 ################################################ main ################################################
@@ -256,8 +198,8 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     ### LLM
-    NUMBER_OF_INTERACTIONS = 30
-    TEMPERATUR = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
+    NUMBER_OF_INTERACTIONS = 3
+    TEMPERATURE = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
 
     ### Verification
     FREQUENCY_VERIFICATION = 3
@@ -279,26 +221,27 @@ if __name__ == "__main__":
     ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
 
     ### model selection
-    model_admin_agent = "gpt-5-mini"
-    model_transcript_summarizer = "gpt-4.1-mini"
-    model_terminal_summarizer = "gpt-4.1-mini"
+    MODEL_ADMIN_AGENT = "gpt-5-mini"
+    MODEL_TRANSCRIPT_SUMMARIZER = "gpt-4.1-mini"
+    MODEL_TERMINAL_SUMMARIZER = "gpt-4.1-mini"
     # =====================Settings-END=====================
     
     # protocol commands used
     commands_list = []
 
-    # connect server, login-shell as root and  configure sentinel
-    connect_root_setSentinel()
+    # connect server, login-shell as root and configure sentinel
+    session = ShellSession()
+    session.connect_root_setSentinel()
     
     # set environment variables to simplify terminal output
-    run_cmd("export SYSTEMD_URLIFY=0; export SYSTEMD_PAGER=; export SYSTEMD_COLORS=0")
+    session.run_cmd("export SYSTEMD_URLIFY=0; export SYSTEMD_PAGER=; export SYSTEMD_COLORS=0")
 
     # set environment variable to extract new logs
-    run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
-    run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
+    session.run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
+    session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
 
     # generate verification command
-    verify_cmd = ask_LLM_for_verification(ISSUE, model_admin_agent)["cmd"]
+    verify_cmd = ask_LLM_for_verification(ISSUE, MODEL_ADMIN_AGENT)["cmd"]
 
     try:
         # Chain of Interactions
@@ -307,7 +250,7 @@ if __name__ == "__main__":
             if i % FREQUENCY_VERIFICATION == 0:
                 cmd = verify_cmd
             else:
-                decision = ask_LLM(output, issue=ISSUE, model=model_admin_agent, temperatur=TEMPERATUR)
+                decision = ask_LLM(output, issue=ISSUE, model=MODEL_ADMIN_AGENT, temperature=TEMPERATURE)
                 # Stop condition from the LLM
                 if decision.get("stop"):
                     msg = decision.get("reason", "LLM indicated resolution.")
@@ -330,13 +273,13 @@ if __name__ == "__main__":
             time.sleep(delay)
 
             # execute the command in the interactive terminal
-            result = run_cmd(cmd)
+            result = session.run_cmd(cmd)
             # update raw output
             raw_output += f"\n$ {cmd}\n{result}\n"
             # summarize terminal output if it is too long
             if len(result) > MAX_LENGTH_TERMINAL_OUTPUT:
                 try:
-                    summary = summarize_terminal(cmd + "\n" + result, model=model_terminal_summarizer, context_window=TERMINAL_CONTEXT_WINDOW)
+                    summary = summarize_terminal(cmd + "\n" + result, model=MODEL_TERMINAL_SUMMARIZER, context_window=TERMINAL_CONTEXT_WINDOW)
                     tail = result[-TAIL_LENGTH_TERMINAL:]
                     result = (
                         "[TERMINAL SUMMARY]\n"
@@ -354,7 +297,7 @@ if __name__ == "__main__":
             output += f"\n$ {cmd}\n{result}\n"
             # summarize current transcript if it is too long
             if len(output) > MAX_LENGTH_TRANSCRIPT:
-                summary = summarize_transcript(output, model=model_transcript_summarizer)
+                summary = summarize_transcript(output, model=MODEL_TRANSCRIPT_SUMMARIZER)
                 tail = output[-TAIL_LENGTH_TRANSCRIPT:]
                 output = summary + "\n\n---[recent tail]---\n" + tail
 
@@ -367,7 +310,7 @@ if __name__ == "__main__":
         with open("commands.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(commands_list))
         with open("final_report.txt", "w", encoding="utf-8") as f:
-            f.write(summarize_final(output + "\nList of commands: " + "\n".join(commands_list), model_transcript_summarizer))
+            f.write(summarize_final(output + "\nList of commands: " + "\n".join(commands_list), MODEL_TRANSCRIPT_SUMMARIZER))
         # write output to file
         with open("output.txt", "w", encoding="utf-8") as f:
             f.write(output)
@@ -375,12 +318,11 @@ if __name__ == "__main__":
         with open("raw_output.txt", "w", encoding="utf-8") as f:
             f.write(raw_output)
         # extract new logs and write to file
-        logs = run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
+        logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
         with open("LLM_nextcloud.log", "w", encoding="utf-8") as f:
             f.write(logs)
-        logs = run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
+        logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
         with open("LLM_audit.log", "w", encoding="utf-8") as f:
             f.write(logs)
-        try: child.close(force=True)
-        except Exception: pass
+        session.close()
 
