@@ -1,16 +1,7 @@
-Summary of checks
-- HTTP: http/https to nextcloud.local return 200 OK (login) after 302 redirect; /status.php returns 200.
-- Apache: active; no 500s in access log; Nextcloud vhost error log shows no recent errors.
-- Nextcloud: installed, not in maintenance (occ status OK).
-- PHP-FPM is inactive, but Apache is using mod_php (mpm_prefork + php_module), so that’s expected here.
+Nextcloud HTTP 500 error is likely caused by the disabled "bruteforcesettings" app which triggered runtime exceptions in the logs. Apache2 and MySQL services are active, Nextcloud config.php has no syntax errors, and maintenance mode is off. File permissions appear correct. The site URL returns HTTP 404, indicating a possible misconfiguration or missing Nextcloud alias in Apache.
 
-Conclusion
-- I cannot reproduce an HTTP 500 now; the site appears healthy.
-
-Notes and optional follow-ups
-- Nextcloud log shows “dirty table reads” exceptions from notifications. Not fatal, but keep an eye on DB load/transactions.
-- If users previously saw a 500, capture it next time:
-  - Immediately check Apache error log: tail -n 100 /var/log/apache2/nextcloud.local-error.log
-  - Note timestamp and correlate with: grep ' 500 ' /var/log/apache2/nextcloud.local-access.log
-  - Check Nextcloud app log around that time: tail -n 200 /var/www/nextcloud/data/nextcloud.log
-- Consider enabling APCu/Redis if not already for stability/performance, and ensure cron is set to system cron rather than AJAX.
+Plan:
+- Verify Apache site configuration for Nextcloud alias or DocumentRoot.
+- Check Nextcloud .htaccess and config.php for URL base settings.
+- Re-enable or properly configure the bruteForce app or remove its references.
+- Restart Apache and test site access again.

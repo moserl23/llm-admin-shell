@@ -12,6 +12,7 @@ from functools import partial, wraps
 import time, random
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.runnables import RunnableLambda
+from enum import Enum
 
 
 def summarize_terminal(
@@ -43,7 +44,19 @@ class ValidationInput(BaseModel): command: str
 class TerminationInput(BaseModel): rationale: str
 class PlanningInput(BaseModel): hypothesis: str
 class CommandInput(BaseModel): command: str
+# COT
+class PlanHypothesesInput(BaseModel):
+    content: str
+class PlanEvaluateInput(BaseModel):
+    content: str
+class PlanActionsInput(BaseModel):
+    content: str
 
+class Phase(str, Enum):
+    PLAN_EVALUATE   = "plan_evaluate"
+    PLAN_ACTIONS    = "plan_actions"
+    OPS             = "ops"
+stage = {"phase": Phase.OPS}
 # ---------- Delay Wrapper ---------- 
 def with_random_delay(func, mean=3.0, stddev=0.5, min_delay=0.5, max_delay=5.0):
     @wraps(func)
@@ -59,6 +72,10 @@ def with_random_delay(func, mean=3.0, stddev=0.5, min_delay=0.5, max_delay=5.0):
 def make_validation_tool(session, summarize_terminal: Callable[[str], str], is_safe_command: Callable[[str], bool],
                          delay_mean, delay_std, delay_min, delay_max):
     def emit_validation_command(command: str) -> str:
+        if stage["phase"] == Phase.PLAN_EVALUATE:
+            return f"ERROR: Planning not complete. Call plan_evaluate next."
+        if stage["phase"] == Phase.PLAN_ACTIONS:
+            return f"ERROR: Planning not complete. Call plan_actions next."
         if not is_safe_command(command):
             return f"VALIDATION_COMMAND: {command}\nOUTPUT:\n[blocked: command deemed unsafe]"
         try:
@@ -75,10 +92,13 @@ def make_validation_tool(session, summarize_terminal: Callable[[str], str], is_s
         args_schema=ValidationInput,
     )
 
-def make_next_command_tool(session, summarize_terminal, is_safe_command,
+def make_next_command_tool(session, summarize_terminal: Callable[[str], str], is_safe_command: Callable[[str], bool],
                            delay_mean, delay_std, delay_min, delay_max):
-
     def emit_next_command(command: str) -> str:
+        if stage["phase"] == Phase.PLAN_EVALUATE:
+            return f"ERROR: Planning not complete. Call plan_evaluate next."
+        if stage["phase"] == Phase.PLAN_ACTIONS:
+            return f"ERROR: Planning not complete. Call plan_actions next."
         if not is_safe_command(command):
             return f"NEXT_COMMAND: {command}\nOUTPUT:\n[blocked: command deemed unsafe]"
         try:
@@ -106,16 +126,52 @@ def make_termination_tool():
         args_schema=TerminationInput,
     )
 
+# currently not used
 def make_planning_tool():
     def emit_plan(hypothesis: str) -> str:
         return f"PLAN:\n{hypothesis}"
-
     return StructuredTool.from_function(
         func=emit_plan,
         name="plan",
         description="Propose the next investigative hypotheses or a short plan (3–6 bullets).",
         args_schema=PlanningInput,
     )
+
+def make_plan_hypotheses_tool():
+    def emit(content: str) -> str:
+        if stage["phase"] == Phase.PLAN_EVALUATE:
+            return f"ERROR: Incorrect planning step. Call plan_evaluate next."
+        if stage["phase"] == Phase.PLAN_ACTIONS:
+            return f"ERROR: Incorrect planning step. Call plan_actions next."
+        stage["phase"] = Phase.PLAN_EVALUATE
+        return "PLAN_HYPOTHESES:\n" + content
+    return StructuredTool.from_function(func=emit, name="plan_hypotheses",
+        description="Stage 1/3. Create assumptions and 2–4 ranked hypotheses.",
+        args_schema=PlanHypothesesInput)
+
+def make_plan_evaluate_tool():
+    def emit(content: str) -> str:
+        if stage["phase"] == Phase.OPS:
+            return f"ERROR: Incorrect planning step. Start with plan_hypotheses."
+        if stage["phase"] == Phase.PLAN_ACTIONS:
+            return f"ERROR: Incorrect planning step. Call plan_actions next."
+        stage["phase"] = Phase.PLAN_ACTIONS
+        return "PLAN_EVALUATE:\n" + content
+    return StructuredTool.from_function(func=emit, name="plan_evaluate",
+        description="Stage 2/3 (after plan_hypotheses). Identify the MOST PROBABLE hypothesis from the previous step and justify it.",
+        args_schema=PlanEvaluateInput)
+
+def make_plan_actions_tool():
+    def emit(content: str) -> str:
+        if stage["phase"] == Phase.OPS:
+            return f"ERROR: Incorrect planning step. Start with plan_hypotheses."
+        if stage["phase"] == Phase.PLAN_EVALUATE:
+            return f"ERROR: Incorrect planning step. Call plan_evaluate next."
+        stage["phase"] = Phase.OPS
+        return "PLAN_ACTIONS:\n" + content
+    return StructuredTool.from_function(func=emit, name="plan_actions",
+        description="Stage 3/3 (after plan_evaluate). Produce a short, safe action plan of concrete steps. Keep the plan at a high level and abstract — describe what type of checks or fixes should be done.",
+        args_schema=PlanActionsInput)
 
 
 # --------------------------- main ---------------------------
@@ -130,13 +186,13 @@ if __name__ == "__main__":
     TAIL_LENGTH_TERMINAL = 500
 
     # time
-    VARIABILITY = 0.001
-    MEAN_DELAY = 12
+    VARIABILITY = 0.2
+    MEAN_DELAY = 1
     MIN_DELAY = 0
-    MAX_DELAY = 20
+    MAX_DELAY = 5
 
     # admin agent
-    MODEL_ADMIN_AGENT = "gpt-5"
+    MODEL_ADMIN_AGENT = "gpt-4.1-mini"
     NUMBER_OF_INTERACTIONS = 30
     TEMPERATURE = 0
     ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
@@ -160,9 +216,20 @@ if __name__ == "__main__":
         # 1) Build tools *after* session exists
         validation_tool  = make_validation_tool(session, summarize_parametrized, is_safe_command, **time_param_dict)
         command_tool     = make_next_command_tool(session, summarize_parametrized, is_safe_command, **time_param_dict)
-        planning_tool    = make_planning_tool()
+        planning_tool    = make_planning_tool() #  currently not used
         termination_tool = make_termination_tool()
-        tools = [validation_tool, termination_tool, planning_tool, command_tool]
+        plan_hypotheses_tool = make_plan_hypotheses_tool()
+        plan_evaluate_tool   = make_plan_evaluate_tool()
+        plan_actions_tool    = make_plan_actions_tool()
+        tools = [
+            plan_hypotheses_tool,
+            plan_evaluate_tool,
+            plan_actions_tool,
+            validation_tool,
+            termination_tool,
+            #planning_tool,
+            command_tool,
+        ]
 
 
         # 2) LLM and prompt, force LLM to be non-streaming
@@ -203,8 +270,12 @@ if __name__ == "__main__":
             "=== Agent tools ===\n"
             "- validation: run ONE concrete health check (e.g., curl/status, systemd health) and return output.\n"
             "- next_command: run ONE low-risk diagnostic/repair command and return output.\n"
-            "- plan: propose next investigative hypotheses or a short plan (3–6 bullets).\n"
+            "- plan: use the tools plan_hypotheses -> plan_evaluate -> plan_actions.\n"
             "- terminate: stop once a passed validation proves the issue is resolved.\n"
+             "=== Planning discipline ===\n"
+            "- Tools are HARD-GATED. You MUST call plan_hypotheses → plan_evaluate → plan_actions in order.\n"
+            "- validation / next_command / terminate are unavailable until planning is complete. "
+            "Out-of-order calls will return an ERROR string you must correct.\n",
             ),
             ("human", "{input}"),
             # (optional) keep conversation state; harmless if you don't use it:
@@ -250,6 +321,3 @@ if __name__ == "__main__":
             f.write(logs)
         session.close()
     
-# this is a test
-# this is another test
-# last write
