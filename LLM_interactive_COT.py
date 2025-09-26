@@ -56,18 +56,43 @@ def with_random_delay(func, mean=3.0, stddev=0.5, min_delay=0.5, max_delay=5.0):
     return wrapper
 
 # ---------- Tool factories ----------
-def make_validation_tool(session, summarize_terminal: Callable[[str], str], is_safe_command: Callable[[str], bool]):
+def make_validation_tool(session, summarize_terminal: Callable[[str], str], is_safe_command: Callable[[str], bool],
+                         delay_mean, delay_std, delay_min, delay_max):
     def emit_validation_command(command: str) -> str:
         if not is_safe_command(command):
             return f"VALIDATION_COMMAND: {command}\nOUTPUT:\n[blocked: command deemed unsafe]"
-        output = summarize_terminal(session.run_cmd(command))
+        try:
+            output = summarize_terminal(session.run_cmd(command))
+        except Exception as e:
+            return f"VALIDATION_COMMAND: {command}\nOUTPUT:\n[error: {e}]"
         return f"VALIDATION_COMMAND: {command}\nOUTPUT:\n{output}"
 
+    delayed = with_random_delay(emit_validation_command, delay_mean, delay_std, delay_min, delay_max)
     return StructuredTool.from_function(
-        func=emit_validation_command,
+        func=delayed,
         name="validation",
-        description="Run ONE concrete validation command (e.g., curl/status, systemd health) and return its output.",
+        description="Run ONE concrete validation command and return its output.",
         args_schema=ValidationInput,
+    )
+
+def make_next_command_tool(session, summarize_terminal, is_safe_command,
+                           delay_mean, delay_std, delay_min, delay_max):
+
+    def emit_next_command(command: str) -> str:
+        if not is_safe_command(command):
+            return f"NEXT_COMMAND: {command}\nOUTPUT:\n[blocked: command deemed unsafe]"
+        try:
+            output = summarize_terminal(session.run_cmd(command))
+        except Exception as e:
+            return f"NEXT_COMMAND: {command}\nOUTPUT:\n[error: {e}]"
+        return f"NEXT_COMMAND: {command}\nOUTPUT:\n{output}"
+
+    delayed = with_random_delay(emit_next_command, delay_mean, delay_std, delay_min, delay_max)
+    return StructuredTool.from_function(
+        func=delayed,
+        name="next_command",
+        description="Run ONE diagnostic/repair command and return its output.",
+        args_schema=CommandInput,
     )
 
 def make_termination_tool():
@@ -92,28 +117,6 @@ def make_planning_tool():
         args_schema=PlanningInput,
     )
 
-def make_next_command_tool(session, summarize_terminal, is_safe_command,
-                           delay_mean=3.0, delay_std=0.5, delay_min=0.5, delay_max=5.0):
-
-    def emit_next_command(command: str) -> str:
-        if not is_safe_command(command):
-            return f"NEXT_COMMAND: {command}\nOUTPUT:\n[blocked: command deemed unsafe]"
-        try:
-            output = summarize_terminal(session.run_cmd(command))
-        except Exception as e:
-            return f"NEXT_COMMAND: {command}\nOUTPUT:\n[error: {e}]"
-        return f"NEXT_COMMAND: {command}\nOUTPUT:\n{output}"
-
-    delayed = with_random_delay(emit_next_command, delay_mean, delay_std, delay_min, delay_max)
-    return StructuredTool.from_function(
-        func=delayed,
-        name="next_command",
-        description="Run ONE low-risk diagnostic/repair command and return its output.",
-        args_schema=CommandInput,
-    )
-
-
-
 
 # --------------------------- main ---------------------------
 if __name__ == "__main__":
@@ -127,13 +130,13 @@ if __name__ == "__main__":
     TAIL_LENGTH_TERMINAL = 500
 
     # time
-    VARIABILITY = 0.2
-    MEAN_DELAY = 3
+    VARIABILITY = 0.001
+    MEAN_DELAY = 12
     MIN_DELAY = 0
-    MAX_DELAY = 5
+    MAX_DELAY = 20
 
     # admin agent
-    MODEL_ADMIN_AGENT = "gpt-4.1"
+    MODEL_ADMIN_AGENT = "gpt-5"
     NUMBER_OF_INTERACTIONS = 30
     TEMPERATURE = 0
     ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
@@ -152,16 +155,17 @@ if __name__ == "__main__":
     try:
 
         summarize_parametrized = partial(summarize_terminal, model=MODEL_TERMINAL_SUMMARIZER, max_terminal_output=MAX_LENGTH_TERMINAL_OUTPUT, context_window=TERMINAL_CONTEXT_WINDOW, tail_chars=TAIL_LENGTH_TERMINAL)
+        time_param_dict = {"delay_mean":MEAN_DELAY, "delay_std":VARIABILITY*MEAN_DELAY, "delay_min":MIN_DELAY, "delay_max":MAX_DELAY}
 
         # 1) Build tools *after* session exists
-        validation_tool  = make_validation_tool(session, summarize_parametrized, is_safe_command)
-        command_tool     = make_next_command_tool(session, summarize_parametrized, is_safe_command)
+        validation_tool  = make_validation_tool(session, summarize_parametrized, is_safe_command, **time_param_dict)
+        command_tool     = make_next_command_tool(session, summarize_parametrized, is_safe_command, **time_param_dict)
         planning_tool    = make_planning_tool()
         termination_tool = make_termination_tool()
         tools = [validation_tool, termination_tool, planning_tool, command_tool]
 
 
-        # 2) LLM and prompt
+        # 2) LLM and prompt, force LLM to be non-streaming
         base_llm = ChatOpenAI(model=MODEL_ADMIN_AGENT, temperature=TEMPERATURE, api_key=API_KEY)
         nonstream_llm = RunnableLambda(lambda msgs, **kw: base_llm.invoke(msgs, **kw))
         prompt_tmpl = ChatPromptTemplate.from_messages([
@@ -246,3 +250,4 @@ if __name__ == "__main__":
             f.write(logs)
         session.close()
     
+# this is a test

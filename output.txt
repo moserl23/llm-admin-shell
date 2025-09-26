@@ -1,2 +1,96 @@
 
 ===== STEPS =====
+--- Step 1 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/
+OUTPUT:
+302
+--- Step 2 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code} %{url_effective}\n' -H 'Host: nextcloud.local' -L http://127.0.0.1/
+OUTPUT:
+200 http://nextcloud.local/index.php/login
+--- Step 3 ---Obs:
+NEXT_COMMAND: grep -Ei 'error|warn|php|fatal|exception' /var/log/apache2/nextcloud.local-error.log | tail -n 50
+OUTPUT:
+
+--- Step 4 ---Obs:
+VALIDATION_COMMAND: curl -k -s -o /dev/null -w '%{http_code} %{url_effective}\n' -H 'Host: nextcloud.local' https://127.0.0.1/
+OUTPUT:
+200 https://127.0.0.1/
+--- Step 5 ---Obs:
+NEXT_COMMAND: grep ' 500 ' /var/log/apache2/nextcloud.local-access.log | tail -n 20
+OUTPUT:
+
+--- Step 6 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' http://127.0.0.1/status.php
+OUTPUT:
+200
+--- Step 7 ---Obs:
+NEXT_COMMAND: grep -Ei 'error|exception|fatal' /var/www/nextcloud/data/nextcloud.log | tail -n 20
+OUTPUT:
+The output shows multiple Nextcloud log entries with the following key points:
+
+- A deprecation warning: Calling OCP\DB\QueryBuilder\IQueryBuilder::orX without parameters is deprecated and will soon throw an error (file ExpressionBuilder.php line 87).
+- Repeated "dirty table reads" exceptions during SQL SELECT queries on the oc_authtoken table filtering by uid and last_activity. These occur during notification API calls (/ocs/v2.php/apps/notifications/api/v2/notifications) by user "Admin" from IP 192.168.56.1.
+- The dirty reads are logged as exceptions but do not show fatal errors; they indicate potential database transaction isolation or consistency issues.
+- The stack traces involve database query execution in ConnectionAdapter.php and QueryBuilder.php, and notification service calls in Notifications app controllers.
+- No explicit fatal errors or crashes are shown, but the warnings and exceptions suggest upcoming compatibility issues and possible data consistency concerns in database reads.
+
+--- Tail ---
+cloud/ocs/v2.php","line":7,"args":["/var/www/nextcloud/ocs/v1.php"],"function":"require_once"}],"File":"/var/www/nextcloud/lib/private/DB/Connection.php","Line":406,"message":"dirty table reads: SELECT `name` FROM `*PREFIX*authtoken` WHERE (`uid` = :dcValue1) AND (`last_activity` >= :dcValue2)","tables":["oc_authtoken"],"reads":["oc_authtoken"],"exception":{},"CustomMessage":"dirty table reads: SELECT `name` FROM `*PREFIX*authtoken` WHERE (`uid` = :dcValue1) AND (`last_activity` >= :dcValue2)"}}
+--- Step 8 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nextcloud.local' 'http://127.0.0.1/ocs/v2.php/apps/notifications/api/v2/notifications'
+OUTPUT:
+401
+--- Step 9 ---Obs:
+NEXT_COMMAND: tail -n 50 /var/log/apache2/nextcloud.local-access.log
+OUTPUT:
+Summary of bash-terminal output (Nextcloud server access logs):
+
+- Multiple successful GET requests (HTTP 200) for CSS, JS, images, and localization files from IP 192.168.56.1, mostly related to theming and login page resources.
+- Several internal dummy Apache OPTIONS requests (::1) responded with HTTP 200.
+- Numerous curl requests from localhost (127.0.0.1) performing GET on root (/), login page, status.php, and API endpoints.
+- HTTP 302 redirects occurred frequently on root (/) requests, redirecting to login pages.
+- Two HTTP 408 (Request Timeout) entries with no user agent or referrer, indicating client connection timeouts.
+- One HTTP 412 (Precondition Failed) response on /ocs/v2.php/cloud/capabilities API call.
+- One HTTP 401 (Unauthorized) response on /ocs/v2.php/apps/notifications/api/v2/notifications API call, indicating failed authentication.
+
+No explicit errors or warnings in server logs besides the 408, 412, and 401 HTTP status codes indicating client timeouts, precondition failure, and unauthorized access respectively.
+
+--- Tail ---
+"-" "curl/8.5.0"
+127.0.0.1 - - [26/Sep/2025:09:38:52 +0000] "GET / HTTP/1.1" 302 1360 "-" "curl/8.5.0"
+127.0.0.1 - - [26/Sep/2025:09:38:52 +0000] "GET /index.php/login HTTP/1.1" 200 25485 "-" "curl/8.5.0"
+192.168.56.1 - - [26/Sep/2025:09:39:29 +0000] "-" 408 0 "-" "-"
+127.0.0.1 - - [26/Sep/2025:09:39:55 +0000] "GET /status.php HTTP/1.1" 200 1041 "-" "curl/8.5.0"
+127.0.0.1 - - [26/Sep/2025:09:40:31 +0000] "GET /ocs/v2.php/apps/notifications/api/v2/notifications HTTP/1.1" 401 1521 "-" "curl/8.5.0"
+--- Step 10 ---Obs:
+VALIDATION_COMMAND: systemctl is-active apache2
+OUTPUT:
+active
+--- Step 11 ---Obs:
+VALIDATION_COMMAND: systemctl is-active php8.3-fpm
+OUTPUT:
+inactive
+--- Step 12 ---Obs:
+NEXT_COMMAND: grep -Ei '500|php|fatal|segfault|proxy_fcgi' /var/log/apache2/error.log | tail -n 50
+OUTPUT:
+
+--- Step 13 ---Obs:
+NEXT_COMMAND: apache2ctl -M | egrep -i 'php|proxy_fcgi|mpm'
+OUTPUT:
+AH00558: apache2: Could not reliably determine the server's fully qualified domain name, using fd17:625c:f037:2:a00:27ff:fe3f:3739. Set the 'ServerName' directive globally to suppress this message
+ mpm_prefork_module (shared)
+ php_module (shared)
+--- Step 14 ---Obs:
+NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ status
+OUTPUT:
+- installed: true
+  - version: 31.0.7.1
+  - versionstring: 31.0.7
+  - edition: 
+  - maintenance: false
+  - needsDbUpgrade: false
+  - productname: Nextcloud
+  - extendedSupport: false
+--- Step 15 ---Obs:
+TERMINATE: Cannot reproduce HTTP 500. Validations show Nextcloud responding normally: curl to / follows 302 to login with 200 OK; HTTPS returns 200; /status.php returns 200. Apache access log shows no 500 entries; vhost error log is quiet. occ status indicates installed, not in maintenance. Site appears healthy now.
