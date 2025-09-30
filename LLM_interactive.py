@@ -198,11 +198,11 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     ### LLM
-    NUMBER_OF_INTERACTIONS = 3
+    NUMBER_OF_INTERACTIONS = 30
     TEMPERATURE = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
 
     ### Verification
-    FREQUENCY_VERIFICATION = 3
+    FREQUENCY_VERIFICATION = 5
   
     ### Length thresholds for different content
     MAX_LENGTH_TERMINAL_OUTPUT = 2000

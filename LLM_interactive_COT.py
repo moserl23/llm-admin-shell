@@ -180,14 +180,14 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     # sumarize
-    MODEL_TERMINAL_SUMMARIZER = "gpt-4.1-mini"
+    MODEL_TERMINAL_SUMMARIZER = "gpt-4.1"
     MAX_LENGTH_TERMINAL_OUTPUT = 2000
     TERMINAL_CONTEXT_WINDOW = 10_000
     TAIL_LENGTH_TERMINAL = 500
 
     # time
     VARIABILITY = 0.2
-    MEAN_DELAY = 1
+    MEAN_DELAY = 3
     MIN_DELAY = 0
     MAX_DELAY = 5
 

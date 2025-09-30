@@ -7,25 +7,25 @@ Nextcloud returns HTTP 500 error. Possible causes:
 2. PHP errors or misconfiguration (e.g., PHP 8.3.6 incompatibility).
 3. Nextcloud config.php misconfiguration or corrupted.
 4. Database connection failure or database server down.
-5. File permission issues on Nextcloud directories.
+5. File permission issues on Nextcloud files.
 6. Maintenance mode enabled or upgrade incomplete.
-7. Apache error logs contain clues about the error.
-8. Nextcloud app or core update caused issues.
-9. Insufficient resources (CPU, memory) causing failures.
+7. Missing or disabled required Nextcloud apps.
+8. Apache error logs contain clues about the error.
+9. PHP error logs might reveal issues.
+10. Resource exhaustion (CPU, memory) causing failures.
 --- Step 2 ---Obs:
 PLAN_EVALUATE:
-Most probable cause: Apache error logs often reveal the root cause of HTTP 500 errors. Since Apache serves Nextcloud, if Apache2 service is running but misconfigured or if PHP errors occur, they will be logged there. Checking Apache error logs and service status is the best first step to evaluate the issue.
+Most probable cause: Apache error logs often contain direct clues for HTTP 500 errors. Checking Apache2 service status is quick and essential. Next, verifying Nextcloud maintenance mode and config.php is important. Database connection issues are common but less likely without specific symptoms. PHP errors or misconfiguration can also cause 500 errors, but logs will clarify. Therefore, the priority is to check Apache2 service status, Apache error logs, and Nextcloud maintenance mode flag.
 --- Step 3 ---Obs:
 PLAN_ACTIONS:
 1. Check Apache2 service status.
-2. Inspect recent entries in Apache error log for Nextcloud.
-3. Check PHP error logs if separate.
-4. Verify Nextcloud config.php for syntax or config errors.
-5. Check Nextcloud maintenance mode status.
-6. Check database service status and connectivity.
-7. Check file permissions on Nextcloud directory.
-8. Restart Apache2 service if needed.
-9. Verify Nextcloud site after fixes.
+2. Inspect last 20 lines of Apache error log for Nextcloud.
+3. Check Nextcloud maintenance mode flag in config.php using occ.
+4. Verify Nextcloud config.php for obvious misconfigurations.
+5. Check database service status and logs if needed.
+6. Check PHP error logs if accessible.
+7. Verify file permissions on Nextcloud directory.
+8. Check resource usage (CPU, memory) if no other clues.
 --- Step 4 ---Obs:
 VALIDATION_COMMAND: systemctl is-active apache2
 OUTPUT:
@@ -35,260 +35,202 @@ VALIDATION_COMMAND: tail -n 20 /var/log/apache2/nextcloud.local-error.log
 OUTPUT:
 
 --- Step 6 ---Obs:
-VALIDATION_COMMAND: head -n 20 /var/log/php8.3-fpm.log || echo 'No separate PHP error log found'
+NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ config:system:get maintenance
 OUTPUT:
-head: cannot open '/var/log/php8.3-fpm.log' for reading: No such file or directory
-No separate PHP error log found
+An unhandled exception has been thrown:
+RedisException: No such file or directory in /var/www/nextcloud/lib/private/RedisFactory.php:104
+Stack trace:
+#0 /var/www/nextcloud/lib/private/RedisFactory.php(104): Redis->pconnect()
+#1 /var/www/nextcloud/lib/private/RedisFactory.php(148): OC\RedisFactory->create()
+#2 /var/www/nextcloud/lib/private/Memcache/Redis.php(53): OC\RedisFactory->getInstance()
+#3 /var/www/nextcloud/lib/private/Memcache/Redis.php(59): OC\Memcache\Redis->getCache()
+#4 /var/www/nextcloud/lib/private/App/InfoParser.php(32): OC\Memcache\Redis->get()
+#5 /var/www/nextcloud/lib/private/App/AppManager.php(780): OC\App\InfoParser->parse()
+#6 /var/www/nextcloud/lib/private/App/AppManager.php(765): OC\App\AppManager->getAppInfoByPath()
+#7 /var/www/nextcloud/lib/private/AppFramework/App.php(49): OC\App\AppManager->getAppInfo()
+#8 /var/www/nextcloud/lib/private/legacy/OC_App.php(111): OC\AppFramework\App::buildAppNamespace()
+#9 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(76): OC_App::registerAutoloading()
+#10 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC\AppFramework\Bootstrap\Coordinator->registerApps()
+#11 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#12 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#13 /var/www/nextcloud/console.php(28): require_once('...')
+#14 /var/www/nextcloud/occ(33): require_once('...')
+#15 {main}
 --- Step 7 ---Obs:
-NEXT_COMMAND: /usr/bin/php -l /var/www/nextcloud/config/config.php
-OUTPUT:
-No syntax errors detected in /var/www/nextcloud/config/config.php
+PLAN_HYPOTHESES:
+Apache2 service is active, so not down.
+Apache error log is empty for last 20 lines, no direct clues.
+Nextcloud occ command to get maintenance flag failed with RedisException: No such file or directory in RedisFactory.php.
+This suggests Redis service or socket is missing or misconfigured.
+Redis is used for caching in Nextcloud, failure to connect can cause HTTP 500.
+Hypotheses:
+1. Redis service is not running or Redis socket path is incorrect in Nextcloud config.
+2. Redis server is not installed or misconfigured.
+3. Nextcloud config.php has incorrect Redis cache settings.
+4. Redis permissions or socket file missing.
+5. Redis failure causes Nextcloud app loading failure, leading to HTTP 500.
 --- Step 8 ---Obs:
-VALIDATION_COMMAND: /usr/bin/php /var/www/nextcloud/occ maintenance:mode --status
-OUTPUT:
-The "--status" option does not exist.  
-                                         
-
-maintenance:mode [--on] [--off]
+PLAN_EVALUATE:
+Most probable cause: Redis service is not running or socket path is incorrect, as the RedisException clearly indicates failure to connect to Redis.
+This directly impacts Nextcloud's caching and app loading, causing HTTP 500.
+Less likely that Redis is not installed, but possible.
+Next step should be to check Redis service status and verify Redis socket path in Nextcloud config.php.
 --- Step 9 ---Obs:
-VALIDATION_COMMAND: /usr/bin/php /var/www/nextcloud/occ maintenance:mode
-OUTPUT:
-Maintenance mode is currently disabled
+ERROR: Planning not complete. Call plan_actions next.
 --- Step 10 ---Obs:
-VALIDATION_COMMAND: systemctl is-active mysql
-OUTPUT:
-active
+ERROR: Planning not complete. Call plan_actions next.
 --- Step 11 ---Obs:
-VALIDATION_COMMAND: systemctl is-active mariadb
-OUTPUT:
-active
+PLAN_ACTIONS:
+1. Check Redis service status (systemctl is-active redis-server).
+2. Inspect Redis related settings in Nextcloud config.php (grep redis /var/www/nextcloud/config/config.php).
+3. If Redis service is not running, attempt to start it.
+4. Verify Redis socket file exists and permissions.
+5. Check Redis logs if service fails to start.
+6. After fixing Redis, retry Nextcloud occ commands and verify site.
 --- Step 12 ---Obs:
-VALIDATION_COMMAND: ls -ld /var/www/nextcloud /var/www/nextcloud/config /var/www/nextcloud/data
+VALIDATION_COMMAND: systemctl is-active redis-server
 OUTPUT:
-drwxr-xr-x 16 www-data www-data 4096 Aug 28 13:10 /var/www/nextcloud
-drwxr-xr-x  2 www-data www-data 4096 Aug 28 13:52 /var/www/nextcloud/config
-drwxrwx---  4 www-data www-data 4096 Aug  4 09:31 /var/www/nextcloud/data
+inactive
 --- Step 13 ---Obs:
-VALIDATION_COMMAND: curl -I http://localhost/nextcloud | head -n 5
+VALIDATION_COMMAND: grep -i redis /var/www/nextcloud/config/config.php | head -n 10
 OUTPUT:
-% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-
-  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-  0  4887    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-HTTP/1.1 404 Not Found
-
-Date: Fri, 26 Sep 2025 12:54:35 GMT
-
-Server: Apache/2.4.58 (Ubuntu)
-
-Set-Cookie: ocznfdez0yoo=5hqobgmapsnvu2dnta4hoj9gvd; path=/; HttpOnly; SameSite=Lax
-
-Set-Cookie: oc_sessionPassphrase=2%2Bdkss3vOikFgq8IQYmqAcosSKDuxM1zhtMglo9D%2F6pjRK3frkEPAXM2jkbNvjyO4x75FtiKE1ksHUQRug%2FaS%2FoSKzufq%2Fc1VjOipCQWbDL72NaIX2%2BwOBnJq1FPdv3l; path=/; HttpOnly; SameSite=Lax
+'redis' => 
+    'host' => '/var/run/redis/redis-server.sock',
+  'memcache.local' => '\\OC\\Memcache\\Redis',
+  'memcache.distributed' => '\\OC\\Memcache\\Redis',
+  'memcache.locking' => '\\OC\\Memcache\\Redis',
 --- Step 14 ---Obs:
-NEXT_COMMAND: tail -n 20 /var/log/apache2/nextcloud.local-error.log
+NEXT_COMMAND: systemctl start redis-server
 OUTPUT:
 
 --- Step 15 ---Obs:
-NEXT_COMMAND: head -n 20 /var/log/apache2/nextcloud.local-error.log
+VALIDATION_COMMAND: systemctl is-active redis-server
 OUTPUT:
-
+active
 --- Step 16 ---Obs:
-NEXT_COMMAND: ls -l /var/www/nextcloud/index.php
+NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ config:system:get maintenance
 OUTPUT:
--rw-r--r-- 1 www-data www-data 3485 Jul 10 07:54 /var/www/nextcloud/index.php
+An unhandled exception has been thrown:
+RedisException: Permission denied in /var/www/nextcloud/lib/private/RedisFactory.php:104
+Stack trace:
+#0 /var/www/nextcloud/lib/private/RedisFactory.php(104): Redis->pconnect()
+#1 /var/www/nextcloud/lib/private/RedisFactory.php(148): OC\RedisFactory->create()
+#2 /var/www/nextcloud/lib/private/Memcache/Redis.php(53): OC\RedisFactory->getInstance()
+#3 /var/www/nextcloud/lib/private/Memcache/Redis.php(59): OC\Memcache\Redis->getCache()
+#4 /var/www/nextcloud/lib/private/App/InfoParser.php(32): OC\Memcache\Redis->get()
+#5 /var/www/nextcloud/lib/private/App/AppManager.php(780): OC\App\InfoParser->parse()
+#6 /var/www/nextcloud/lib/private/App/AppManager.php(765): OC\App\AppManager->getAppInfoByPath()
+#7 /var/www/nextcloud/lib/private/AppFramework/App.php(49): OC\App\AppManager->getAppInfo()
+#8 /var/www/nextcloud/lib/private/legacy/OC_App.php(111): OC\AppFramework\App::buildAppNamespace()
+#9 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(76): OC_App::registerAutoloading()
+#10 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC\AppFramework\Bootstrap\Coordinator->registerApps()
+#11 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#12 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#13 /var/www/nextcloud/console.php(28): require_once('...')
+#14 /var/www/nextcloud/occ(33): require_once('...')
+#15 {main}
 --- Step 17 ---Obs:
-NEXT_COMMAND: file /var/www/nextcloud/index.php
+NEXT_COMMAND: ls -l /var/run/redis/redis-server.sock
 OUTPUT:
-/var/www/nextcloud/index.php: PHP script, ASCII text
+srwxrwx--- 1 redis redis 0 Sep 29 07:10 /var/run/redis/redis-server.sock
 --- Step 18 ---Obs:
-NEXT_COMMAND: curl -I http://localhost/
+NEXT_COMMAND: stat -c '%U %G' /var/run/redis/redis-server.sock
 OUTPUT:
-HTTP/1.1 302 Found
-
-Date: Fri, 26 Sep 2025 12:54:46 GMT
-
-Server: Apache/2.4.58 (Ubuntu)
-
-Set-Cookie: ocznfdez0yoo=m4hcg0h1hpdkgcropkv1do3mll; path=/; HttpOnly; SameSite=Lax
-
-Set-Cookie: oc_sessionPassphrase=mpyx6hFzQQP5sDoNaBXDiZl3jM6PC2R7lzhP71s%2BElP8rnu0kKQM4WqgCovkQGkG4c%2B6JMYg0l1FbV472nfIx2OS6rOPb%2Bn2W1RhA7gRafPxcIBOLexMob8PLubGU18j; path=/; HttpOnly; SameSite=Lax
-
-Set-Cookie: ocznfdez0yoo=m4hcg0h1hpdkgcropkv1do3mll; path=/; HttpOnly; SameSite=Lax
-
-Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-npFOabM2rAz+ulSJymuCq2wonBQ9J40kzP+RC6l3azo='; style-src 'self' 'unsafe-inline'; frame-src *; img-src * data: blob:; font-src 'self' data:; media-src *; connect-src *; object-src 'none'; base-uri 'self';
-
-Referrer-Policy: no-referrer
-
-X-Content-Type-Options: nosniff
-
-X-Frame-Options: SAMEORIGIN
-
-X-Permitted-Cross-Domain-Policies: none
-
-X-Robots-Tag: noindex, nofollow
-
-X-XSS-Protection: 1; mode=block
-
-Set-Cookie: nc_sameSiteCookielax=true; path=/; httponly;expires=Fri, 31-Dec-2100 23:59:59 GMT; SameSite=lax
-
-Set-Cookie: nc_sameSiteCookiestrict=true; path=/; httponly;expires=Fri, 31-Dec-2100 23:59:59 GMT; SameSite=strict
-
-Set-Cookie: ocznfdez0yoo=m4hcg0h1hpdkgcropkv1do3mll; path=/; HttpOnly; SameSite=Lax
-
-Location: 8;;http://localhost/index.php/loginhttp://localhost/index.php/login
-
-8;;Content-Type: text/html; charset=UTF-8
+redis redis
 --- Step 19 ---Obs:
-NEXT_COMMAND: grep -i error /var/log/apache2/nextcloud.local-error.log | tail -n 20
+NEXT_COMMAND: ps aux | grep apache2 | grep -v grep
 OUTPUT:
-
+root         794  0.1  0.4 279688 40140 ?        Ss   07:02   0:00 /usr/sbin/apache2 -k start
+www-data    1114  0.0  0.2 280320 17432 ?        S    07:08   0:00 /usr/sbin/apache2 -k start
+www-data    1115  0.0  0.2 280320 17432 ?        S    07:08   0:00 /usr/sbin/apache2 -k start
+www-data    1116  0.0  0.2 280320 17560 ?        S    07:08   0:00 /usr/sbin/apache2 -k start
+www-data    1117  0.0  0.2 280320 17432 ?        S    07:08   0:00 /usr/sbin/apache2 -k start
+www-data    1118  0.0  0.2 280320 17560 ?        S    07:08   0:00 /usr/sbin/apache2 -k start
 --- Step 20 ---Obs:
-NEXT_COMMAND: journalctl -u apache2 --since "1 hour ago" | grep -i error | tail -n 20
+NEXT_COMMAND: groups www-data
 OUTPUT:
-
+www-data : www-data redis
 --- Step 21 ---Obs:
-NEXT_COMMAND: find /var/www/nextcloud -type f -name '*.log' -exec tail -n 20 {} +
+NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ config:system:get maintenance
 OUTPUT:
-The log shows repeated RuntimeExceptions triggered by the "bruteForce" app in Nextcloud version 31.0.7.1. The error message is "The loading of lazy AppConfig values have been triggered by app 'bruteForce'," originating from /var/www/nextcloud/lib/private/AppConfig.php around line 1208. This occurs during GET requests to /index.php/login from localhost (127.0.0.1) using curl.
-
-Key points:
-- The bruteForce app repeatedly triggers lazy loading of AppConfig values, causing RuntimeExceptions.
-- Multiple console commands were executed, including:
-  - app:list (twice)
-  - app:disable bruteForce (twice)
-  - maintenance:mode --status
-  - maintenance:mode (enable)
-- The bruteForce app was disabled via console commands, likely in response to the errors.
-- No other warnings or errors are present in the log.
-
-Summary: The bruteForce app caused runtime errors due to lazy AppConfig loading, prompting its disablement and enabling maintenance mode.
-
---- Tail ---
-2025-09-26T12:54:26+00:00","remoteAddr":"","user":"--","app":"admin_audit","method":"","url":"--","message":"Console command executed: maintenance:mode --status","userAgent":"--","version":"31.0.7.1","data":{"app":"admin_audit"}}
-{"reqId":"L7fbylX2mors71RN8TvO","level":1,"time":"2025-09-26T12:54:29+00:00","remoteAddr":"","user":"--","app":"admin_audit","method":"","url":"--","message":"Console command executed: maintenance:mode","userAgent":"--","version":"31.0.7.1","data":{"app":"admin_audit"}}
+An unhandled exception has been thrown:
+RedisException: Permission denied in /var/www/nextcloud/lib/private/RedisFactory.php:104
+Stack trace:
+#0 /var/www/nextcloud/lib/private/RedisFactory.php(104): Redis->pconnect()
+#1 /var/www/nextcloud/lib/private/RedisFactory.php(148): OC\RedisFactory->create()
+#2 /var/www/nextcloud/lib/private/Memcache/Redis.php(53): OC\RedisFactory->getInstance()
+#3 /var/www/nextcloud/lib/private/Memcache/Redis.php(59): OC\Memcache\Redis->getCache()
+#4 /var/www/nextcloud/lib/private/App/InfoParser.php(32): OC\Memcache\Redis->get()
+#5 /var/www/nextcloud/lib/private/App/AppManager.php(780): OC\App\InfoParser->parse()
+#6 /var/www/nextcloud/lib/private/App/AppManager.php(765): OC\App\AppManager->getAppInfoByPath()
+#7 /var/www/nextcloud/lib/private/AppFramework/App.php(49): OC\App\AppManager->getAppInfo()
+#8 /var/www/nextcloud/lib/private/legacy/OC_App.php(111): OC\AppFramework\App::buildAppNamespace()
+#9 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(76): OC_App::registerAutoloading()
+#10 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC\AppFramework\Bootstrap\Coordinator->registerApps()
+#11 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#12 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#13 /var/www/nextcloud/console.php(28): require_once('...')
+#14 /var/www/nextcloud/occ(33): require_once('...')
+#15 {main}
 --- Step 22 ---Obs:
-NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ app:enable bruteForce
+NEXT_COMMAND: chown www-data:www-data /var/run/redis/redis-server.sock
 OUTPUT:
-Could not download app bruteforce
+
 --- Step 23 ---Obs:
-NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ app:disable bruteforce
+NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ config:system:get maintenance
 OUTPUT:
-No such app enabled: bruteforce
+false
 --- Step 24 ---Obs:
-NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ app:list
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}' http://localhost/nextcloud
 OUTPUT:
-Enabled:
-  - activity: 4.0.0
-  - admin_audit: 1.21.0
-  - app_api: 5.0.2
-  - calendar: 5.3.8
-  - circles: 31.0.0
-  - cloud_federation_api: 1.14.0
-  - comments: 1.21.0
-  - contacts: 7.2.3
-  - contactsinteraction: 1.12.0
-  - dashboard: 7.11.0
-  - dav: 1.33.0
-  - federatedfilesharing: 1.21.0
-  - federation: 1.21.0
-  - files: 2.3.1
-  - files_downloadlimit: 4.0.0
-  - files_pdfviewer: 4.0.0
-  - files_reminders: 1.4.0
-  - files_sharing: 1.23.1
-  - files_trashbin: 1.21.0
-  - files_versions: 1.24.0
-  - firstrunwizard: 4.0.0
-  - logreader: 4.0.0
-  - lookup_server_connector: 1.19.0
-  - mail: 5.1.10
-  - nextcloud_announcements: 3.0.0
-  - notes: 4.12.2
-  - notifications: 4.0.0
-  - oauth2: 1.19.1
-  - password_policy: 3.0.0
-  - photos: 4.0.0
-  - privacy: 3.0.0
-  - profile: 1.0.0
-  - provisioning_api: 1.21.0
-  - recommendations: 4.0.0
-  - related_resources: 2.0.0
-  - richdocumentscode: 25.4.202
-  - serverinfo: 3.0.0
-  - settings: 1.14.0
-  - sharebymail: 1.21.0
-  - spreed: 21.1.2
-  - support: 3.0.0
-  - survey_client: 3.0.0
-  - systemtags: 1.21.1
-  - text: 5.0.0
-  - theming: 2.6.1
-  - twofactor_backupcodes: 1.20.0
-  - updatenotification: 1.21.0
-  - user_status: 1.11.0
-  - viewer: 4.0.0
-  - weather_status: 1.11.0
-  - webhook_listeners: 1.2.0
-  - workflowengine: 2.13.0
-Disabled:
-  - bruteforcesettings: 4.0.0 (installed 4.0.0)
-  - encryption: 2.19.0
-  - files_external: 1.23.0
-  - richdocuments: 8.7.3 (installed 8.7.3)
-  - suspicious_login: 9.0.1
-  - twofactor_nextcloud_notification: 5.0.0
-  - twofactor_totp: 13.0.0-dev.0
-  - user_ldap: 1.22.0
+500
 --- Step 25 ---Obs:
-NEXT_COMMAND: /usr/bin/php /var/www/nextcloud/occ maintenance:mode --off
-OUTPUT:
-Maintenance mode already disabled
---- Step 26 ---Obs:
 NEXT_COMMAND: systemctl restart apache2
 OUTPUT:
 
---- Step 27 ---Obs:
-VALIDATION_COMMAND: curl -I http://localhost/nextcloud
+--- Step 26 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}' http://localhost/nextcloud
 OUTPUT:
-HTTP/1.1 404 Not Found
+500
+--- Step 27 ---Obs:
+NEXT_COMMAND: tail -n 20 /var/log/apache2/nextcloud.local-error.log
+OUTPUT:
 
-Date: Fri, 26 Sep 2025 12:55:15 GMT
-
-Server: Apache/2.4.58 (Ubuntu)
-
-Set-Cookie: ocznfdez0yoo=fm65k86toiak5t9d1ctari5qdf; path=/; HttpOnly; SameSite=Lax
-
-Set-Cookie: oc_sessionPassphrase=dx71%2Fa%2FKEIDkjI7YbtcIIcxpwFV3jeSmj3wZusKvdc4w2QSlSxinBI1T4YZb557WoespjQIBl735aE%2Fd1oVQjB19XjLyDdkcpuWJee5n8y0IqN9KnYww2EUcjMqO5M4g; path=/; HttpOnly; SameSite=Lax
-
-Set-Cookie: ocznfdez0yoo=fm65k86toiak5t9d1ctari5qdf; path=/; HttpOnly; SameSite=Lax
-
-Content-Security-Policy: default-src 'none';base-uri 'none';manifest-src 'self';script-src 'nonce-LjUqTmUi5OFD7PWA2JxGQdNwTo/PbS4GRc5TdJHzg6I=' blob: 'wasm-unsafe-eval';script-src-elem 'strict-dynamic' 'nonce-LjUqTmUi5OFD7PWA2JxGQdNwTo/PbS4GRc5TdJHzg6I=' blob: 'wasm-unsafe-eval';style-src 'self' 'unsafe-inline';img-src 'self' data: blob: https://*.tile.openstreetmap.org;font-src 'self' data:;connect-src 'self' blob: stun.nextcloud.com:443;media-src 'self' blob:;frame-src 'self';child-src blob: 'self';frame-ancestors 'self';worker-src blob: 'self';form-action 'self'
-
-Referrer-Policy: no-referrer
-
-X-Content-Type-Options: nosniff
-
-X-Frame-Options: SAMEORIGIN
-
-X-Permitted-Cross-Domain-Policies: none
-
-X-Robots-Tag: noindex, nofollow
-
-X-XSS-Protection: 1; mode=block
-
-Set-Cookie: nc_sameSiteCookielax=true; path=/; httponly;expires=Fri, 31-Dec-2100 23:59:59 GMT; SameSite=lax
-
-Set-Cookie: nc_sameSiteCookiestrict=true; path=/; httponly;expires=Fri, 31-Dec-2100 23:59:59 GMT; SameSite=strict
-
-Set-Cookie: ocznfdez0yoo=fm65k86toiak5t9d1ctari5qdf; path=/; HttpOnly; SameSite=Lax
-
-X-Request-Id: aP7gOS2KD2mpl4kOx55K
-
-Cache-Control: no-cache, no-store, must-revalidate
-
-Feature-Policy: autoplay 'self';camera 'self';fullscreen 'self';geolocation 'none';microphone 'self';payment 'none'
-
-Content-Length: 4887
-
-Content-Type: text/html; charset=UTF-8
+--- Step 28 ---Obs:
+NEXT_COMMAND: tail -n 20 /var/log/syslog | grep redis
+OUTPUT:
+2025-09-29T07:10:34.202557+00:00 server systemd[1]: Starting redis-server.service - Advanced key-value store...
+2025-09-29T07:10:34.269402+00:00 server systemd[1]: Started redis-server.service - Advanced key-value store.
+--- Step 29 ---Obs:
+NEXT_COMMAND: ls -ld /var/run/redis
+OUTPUT:
+drwxr-sr-x 2 redis redis 80 Sep 29 07:10 /var/run/redis
+--- Step 30 ---Obs:
+NEXT_COMMAND: ls -ld /var/www/nextcloud
+OUTPUT:
+drwxr-xr-x 16 www-data www-data 4096 Sep 26 15:09 /var/www/nextcloud
+--- Step 31 ---Obs:
+NEXT_COMMAND: ls -ld /var/www/nextcloud/config
+OUTPUT:
+drwxr-xr-x 2 www-data www-data 4096 Sep 26 15:17 /var/www/nextcloud/config
+--- Step 32 ---Obs:
+NEXT_COMMAND: ls -l /var/www/nextcloud/config/config.php
+OUTPUT:
+-rw-r----- 1 www-data www-data 1136 Sep 26 15:12 /var/www/nextcloud/config/config.php
+--- Step 33 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}' http://localhost/nextcloud
+OUTPUT:
+500
+--- Step 34 ---Obs:
+PLAN_HYPOTHESES:
+Redis service is active and socket ownership changed to www-data, but HTTP 500 persists.
+No Apache error logs or syslog errors related to Redis or Apache.
+Permissions on Nextcloud files and config.php look correct.
+Hypotheses:
+1. Redis socket permissions or group membership still insufficient for www-data.
+2. PHP-FPM or Apache user caching old permissions or config.
+3. Other PHP or Nextcloud app errors causing 500.
+4. Nextcloud cache or data corrupted.
+5. PHP modules or extensions missing or misconfigured.
+6. Apache config or .htaccess causing 500.
+7. Nextcloud maintenance mode off but upgrade incomplete.

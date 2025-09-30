@@ -1,7 +1,1 @@
-Nextcloud HTTP 500 error is likely caused by the disabled "bruteforcesettings" app which triggered runtime exceptions in the logs. Apache2 and MySQL services are active, Nextcloud config.php has no syntax errors, and maintenance mode is off. File permissions appear correct. The site URL returns HTTP 404, indicating a possible misconfiguration or missing Nextcloud alias in Apache.
-
-Plan:
-- Verify Apache site configuration for Nextcloud alias or DocumentRoot.
-- Check Nextcloud .htaccess and config.php for URL base settings.
-- Re-enable or properly configure the bruteForce app or remove its references.
-- Restart Apache and test site access again.
+Agent stopped due to max iterations.

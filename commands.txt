@@ -1,3 +1,24 @@
-curl -I -s http://nextcloud.local/ | head -n 1
+bash -lc 'curl -sS -o /dev/null -w "LOCAL_PATH HTTP_%{http_code} %{time_total}s\n" --max-time 10 http://127.0.0.1/nextcloud || true; curl -sS -o /dev/null -w "HOST nextcloud.local HTTP_%{http_code} %{time_total}s\n" -H "Host: nextcloud.local" --max-time 10 http://127.0.0.1/ || true'
 tail -n 50 /var/log/apache2/nextcloud.local-error.log
-tail -n 80 /var/log/apache2/nextcloud.local-error.log /var/log/apache2/nextcloud.local-access.log
+tail -n 50 /var/www/nextcloud/data/nextcloud.log || true
+bash -lc 'systemctl status redis-server --no-pager; ls -l /var/run/redis/redis-server.sock 2>/dev/null || true; ss -xl | grep -i redis || true; journalctl -u redis-server -n 50 --no-pager'
+id www-data && stat -c '%n %U:%G %A' /var/run/redis/redis-server.sock
+bash -lc 'curl -sS -o /dev/null -w "LOCAL_PATH HTTP_%{http_code} %{time_total}s\n" --max-time 10 http://127.0.0.1/nextcloud || true; curl -sS -o /dev/null -w "HOST nextcloud.local HTTP_%{http_code} %{time_total}s\n" -H "Host: nextcloud.local" --max-time 10 http://127.0.0.1/ || true'
+grep -nE "memcache|redis|unix|socket" /var/www/nextcloud/config/config.php || true
+sed -ri "s|('host'\\s*=>\\s*'[^']*',)|\\1\\n    'port' => 0,|" /var/www/nextcloud/config/config.php && /usr/bin/php /var/www/nextcloud/occ maintenance:repair --no-interaction || true
+/usr/bin/php -m | grep -i redis || dpkg -l | grep -i php-redis || true
+/usr/bin/php -r 'try{ $r=new Redis(); var_dump($r->connect("/var/run/redis/redis-server.sock",0)); echo "\n"; echo $r->ping(); } catch(Exception $e){ echo "ERR:".$e->getMessage(); }'
+bash -lc 'curl -sS -o /dev/null -w "LOCAL_PATH HTTP_%{http_code} %{time_total}s\n" --max-time 10 http://127.0.0.1/nextcloud || true; curl -sS -o /dev/null -w "HOST nextcloud.local HTTP_%{http_code} %{time_total}s\n" -H "Host: nextcloud.local" --max-time 10 http://127.0.0.1/ || true'
+bash -lc 'cat > /var/www/nextcloud/redis_test.php <<PHP
+<?php
+try {
+  $r = new Redis();
+  $ok = $r->connect("/var/run/redis/redis-server.sock", 0);
+  echo "CONNECT_OK:" . ($ok ? "1" : "0") . "\\n";
+  echo "PING:" . $r->ping() . "\\n";
+} catch (Exception $e) {
+  echo "ERR:" . $e->getMessage() . "\\n";
+}
+PHP
+; curl -sS -o - -H "Host: nextcloud.local" http://127.0.0.1/nextcloud/redis_test.php || true; rm -f /var/www/nextcloud/redis_test.php'
+systemctl restart apache2 && sleep 1 && curl -sS -o /dev/null -w "HTTP_%{http_code} %{time_total}s" -H "Host: nextcloud.local" --max-time 10 http://127.0.0.1/nextcloud || true
