@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from config import API_KEY
-from utils import *
+from utils import examples_content, cheatsheet_content, fileEditingRoutine, ShellSession, clean, is_safe_command
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -10,7 +10,6 @@ from langchain_core.output_parsers import StrOutputParser
 from typing import Callable
 from functools import partial, wraps
 import time, random
-from langchain.callbacks.base import BaseCallbackHandler
 from langchain_core.runnables import RunnableLambda
 from enum import Enum
 
@@ -126,7 +125,6 @@ def make_termination_tool():
         args_schema=TerminationInput,
     )
 
-# currently not used
 def make_planning_tool():
     def emit_plan(hypothesis: str) -> str:
         return f"PLAN:\n{hypothesis}"
@@ -180,7 +178,7 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     # sumarize
-    MODEL_TERMINAL_SUMMARIZER = "gpt-4.1"
+    MODEL_TERMINAL_SUMMARIZER = "gpt-4.1-mini"
     MAX_LENGTH_TERMINAL_OUTPUT = 2000
     TERMINAL_CONTEXT_WINDOW = 10_000
     TAIL_LENGTH_TERMINAL = 500
@@ -192,10 +190,13 @@ if __name__ == "__main__":
     MAX_DELAY = 5
 
     # admin agent
-    MODEL_ADMIN_AGENT = "gpt-4.1-mini"
-    NUMBER_OF_INTERACTIONS = 30
+    MODEL_ADMIN_AGENT = "gpt-4.1"
+    NUMBER_OF_INTERACTIONS = 15
     TEMPERATURE = 0
-    ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
+    ISSUE = "The webpage is not loading correctly. I cannot reach login or dashboard."
+
+    # CoT
+    CHAIN_OF_THOUGHTS_PLANNING = True
     # =====================Settings-END======================
 
     session = ShellSession()
@@ -216,73 +217,91 @@ if __name__ == "__main__":
         # 1) Build tools *after* session exists
         validation_tool  = make_validation_tool(session, summarize_parametrized, is_safe_command, **time_param_dict)
         command_tool     = make_next_command_tool(session, summarize_parametrized, is_safe_command, **time_param_dict)
-        planning_tool    = make_planning_tool() #  currently not used
+        planning_tool    = make_planning_tool()
         termination_tool = make_termination_tool()
         plan_hypotheses_tool = make_plan_hypotheses_tool()
         plan_evaluate_tool   = make_plan_evaluate_tool()
         plan_actions_tool    = make_plan_actions_tool()
-        tools = [
-            plan_hypotheses_tool,
-            plan_evaluate_tool,
-            plan_actions_tool,
-            validation_tool,
-            termination_tool,
-            #planning_tool,
-            command_tool,
-        ]
-
+        
+        if CHAIN_OF_THOUGHTS_PLANNING:
+            tools = [
+                plan_hypotheses_tool,
+                plan_evaluate_tool,
+                plan_actions_tool,
+                validation_tool,
+                termination_tool,
+                #planning_tool,
+                command_tool,
+            ]
+        else:
+            tools = [
+                #plan_hypotheses_tool,
+                #plan_evaluate_tool,
+                #plan_actions_tool,
+                validation_tool,
+                termination_tool,
+                planning_tool,
+                command_tool,
+            ]
 
         # 2) LLM and prompt, force LLM to be non-streaming
         base_llm = ChatOpenAI(model=MODEL_ADMIN_AGENT, temperature=TEMPERATURE, api_key=API_KEY)
         nonstream_llm = RunnableLambda(lambda msgs, **kw: base_llm.invoke(msgs, **kw))
+        system_parts = [
+            "Reference:\n",
+            f"Examples - Admin Routines:\n{examples_content}\n\n",
+            f"Cheat Sheet - occ Commands:\n{cheatsheet_content}\n\n",
+            f"File Editing (non-interactive):\n{fileEditingRoutine}\n\n",
+            "You are an operations remediator for Ubuntu 24.04 running a LAMP stack with Nextcloud (PHP 8.3.6).\n\n",
+            "=== Guidelines ===\n",
+            "- Prefer read-only checks first; avoid destructive or state-changing operations.\n",
+            "- Keep commands ONE line only.\n",
+            "- Keep output concise: when inspecting logs or large files, always use filters such as grep, tail, or head.\n",
+            "- Never use interactive or full-screen tools (no less, vi, interactive top, etc.).\n",
+            "- You are connected via SSH in a root shell (sudo -i).\n",
+            "- Environment variables are always set:\n",
+            "    export SYSTEMD_URLIFY=0\n",
+            "    export SYSTEMD_PAGER=\n",
+            "    export SYSTEMD_COLORS=0\n\n",
+            "=== Nextcloud specifics ===\n",
+            "- Installed at: /var/www/nextcloud\n",
+            "- occ commands must be run as: /usr/bin/php /var/www/nextcloud/occ\n\n",
+            "=== Logs ===\n",
+            "- Apache error log: /var/log/apache2/nextcloud.local-error.log\n",
+            "- Apache access log: /var/log/apache2/nextcloud.local-access.log\n\n",
+            "=== Available system tools ===\n",
+            "- curl (HTTP checks)\n",
+            "- net-tools (network diagnostics)\n",
+            "- top (non-interactive only, e.g. top -b -n 1)\n\n",
+            "=== Agent tools ===\n",
+            "- validation: run ONE concrete health check (e.g., curl/status, systemd health) and return output.\n",
+            "- next_command: run ONE low-risk diagnostic/repair command and return output.\n",
+            "- terminate: stop once a passed validation proves the issue is resolved.\n",
+            "- terminate: if a validation shows the service is healthy IMMEDIATELY call the terminate tool"
+        ]
+
+        if CHAIN_OF_THOUGHTS_PLANNING:
+            system_parts += [
+                "- plan: use the tools plan_hypotheses -> plan_evaluate -> plan_actions.\n",
+                "=== Planning discipline ===\n",
+                "- Tools are HARD-GATED. You MUST call plan_hypotheses → plan_evaluate → plan_actions in order.\n",
+                "- validation / next_command / terminate are unavailable until planning is complete. "
+                "Out-of-order calls will return an ERROR string you must correct.\n",
+            ]
+        else:
+            system_parts += [
+                "- plan: create hypotheses or steps for next action\n",
+            ]
+
+        system_prompt = "".join(system_parts)
+
         prompt_tmpl = ChatPromptTemplate.from_messages([
-            ("system",
-            f"Reference:\n"
-            f"Examples - Admin Routines:\n{examples_content}\n\n"
-            f"Cheat Sheet - occ Commands:\n{cheatsheet_content}\n\n"
-            f"File Editing (non-interactive):\n{fileEditingRoutine}\n\n"
-            "You are an operations remediator for Ubuntu 24.04 running a LAMP stack with Nextcloud (PHP 8.3.6).\n\n"
-
-            "=== Guidelines ===\n"
-            "- Prefer read-only checks first; avoid destructive or state-changing operations.\n"
-            "- Keep commands ONE line only.\n"
-            "- Keep output concise: when inspecting logs or large files, always use filters such as grep, tail, or head.\n"
-            "- Never use interactive or full-screen tools (no less, vi, interactive top, etc.).\n"
-            "- You are connected via SSH in a root shell (sudo -i).\n"
-            "- Environment variables are always set:\n"
-            "    export SYSTEMD_URLIFY=0\n"
-            "    export SYSTEMD_PAGER=\n"
-            "    export SYSTEMD_COLORS=0\n\n"
-
-            "=== Nextcloud specifics ===\n"
-            "- Installed at: /var/www/nextcloud\n"
-            "- occ commands must be run as: /usr/bin/php /var/www/nextcloud/occ\n\n"
-
-            "=== Logs ===\n"
-            "- Apache error log: /var/log/apache2/nextcloud.local-error.log\n"
-            "- Apache access log: /var/log/apache2/nextcloud.local-access.log\n\n"
-
-            "=== Available system tools ===\n"
-            "- curl (HTTP checks)\n"
-            "- net-tools (network diagnostics)\n"
-            "- top (non-interactive only, e.g. top -b -n 1)\n\n"
-
-            "=== Agent tools ===\n"
-            "- validation: run ONE concrete health check (e.g., curl/status, systemd health) and return output.\n"
-            "- next_command: run ONE low-risk diagnostic/repair command and return output.\n"
-            "- plan: use the tools plan_hypotheses -> plan_evaluate -> plan_actions.\n"
-            "- terminate: stop once a passed validation proves the issue is resolved.\n"
-             "=== Planning discipline ===\n"
-            "- Tools are HARD-GATED. You MUST call plan_hypotheses → plan_evaluate → plan_actions in order.\n"
-            "- validation / next_command / terminate are unavailable until planning is complete. "
-            "Out-of-order calls will return an ERROR string you must correct.\n",
-            ),
+            ("system", system_prompt),
             ("human", "{input}"),
-            # (optional) keep conversation state; harmless if you don't use it:
             MessagesPlaceholder(variable_name="chat_history"),
-            # REQUIRED by create_openai_tools_agent:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
+
 
         # 3) Build agent *after* tools exist
         agent_runnable = create_openai_tools_agent(nonstream_llm, tools, prompt_tmpl)

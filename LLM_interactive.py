@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-import pexpect
 from openai import OpenAI
 from config import API_KEY
 import json
 import time
 import random
-import re
-import math
-from utils import *
+from utils import examples_content, cheatsheet_content, fileEditingRoutine, ShellSession, clean, is_safe_command
 
 
 ################################################ system-prompt and user-prompt ################################################
@@ -198,7 +195,7 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     ### LLM
-    NUMBER_OF_INTERACTIONS = 30
+    NUMBER_OF_INTERACTIONS = 2
     TEMPERATURE = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
 
     ### Verification
