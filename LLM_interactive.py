@@ -4,7 +4,7 @@ from config import API_KEY
 import json
 import time
 import random
-from utils import examples_content, cheatsheet_content, fileEditingRoutine, ShellSession, clean, is_safe_command
+from utils import examples_content, cheatsheet_content, fileEditingRoutine, ShellSession, clean, is_safe_command, init_env_and_log_offsets, read_new_logs
 
 
 ################################################ system-prompt and user-prompt ################################################
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     ### LLM
-    NUMBER_OF_INTERACTIONS = 2
+    NUMBER_OF_INTERACTIONS = 1
     TEMPERATURE = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
 
     ### Verification
@@ -226,16 +226,10 @@ if __name__ == "__main__":
     # protocol commands used
     commands_list = []
 
-    # connect server, login-shell as root and configure sentinel
+    # connect server, login-shell as root and configure sentinel, configure log-offset and environment-variable
     session = ShellSession()
     session.connect_root_setSentinel()
-    
-    # set environment variables to simplify terminal output
-    session.run_cmd("export SYSTEMD_URLIFY=0; export SYSTEMD_PAGER=; export SYSTEMD_COLORS=0")
-
-    # set environment variable to extract new logs
-    session.run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
-    session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
+    init_env_and_log_offsets(session)
 
     # generate verification command
     verify_cmd = ask_LLM_for_verification(ISSUE, MODEL_ADMIN_AGENT)["cmd"]
@@ -315,11 +309,6 @@ if __name__ == "__main__":
         with open("raw_output.txt", "w", encoding="utf-8") as f:
             f.write(raw_output)
         # extract new logs and write to file
-        logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
-        with open("LLM_nextcloud.log", "w", encoding="utf-8") as f:
-            f.write(logs)
-        logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
-        with open("LLM_audit.log", "w", encoding="utf-8") as f:
-            f.write(logs)
+        read_new_logs(session)
         session.close()
 

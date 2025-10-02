@@ -1,1 +1,5 @@
-Agent stopped due to max iterations.
+The HTTP request to http://127.0.0.1/ with the Host header set to 'nextcloud.local' returned a status code:
+
+```
+HTTP/1.1 302 Found
+```

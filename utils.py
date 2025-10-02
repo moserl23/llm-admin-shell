@@ -4,11 +4,11 @@ import pexpect
 
 
 # read relevant files
-with open("examples.txt", "r", encoding="utf-8") as file:
+with open("InContextLearning/examples.txt", "r", encoding="utf-8") as file:
     examples_content = file.read()
-with open("cheatsheet.txt", "r", encoding="utf-8") as file:
+with open("InContextLearning/cheatsheet.txt", "r", encoding="utf-8") as file:
     cheatsheet_content = file.read()
-with open("fileEditingRoutine.txt", "r", encoding="utf-8") as file:
+with open("InContextLearning/fileEditingRoutine.txt", "r", encoding="utf-8") as file:
     fileEditingRoutine = file.read()
     
 
@@ -86,4 +86,24 @@ DANGEROUS = (
 def is_safe_command(cmd: str) -> bool:
     low = cmd.strip().lower()
     return not any(token in low for token in DANGEROUS)
+
+def init_env_and_log_offsets(session):
+    # set environment variables to simplify terminal output
+    session.run_cmd("export SYSTEMD_URLIFY=0; export SYSTEMD_PAGER=; export SYSTEMD_COLORS=0")
+
+    # set environment variable to extract new logs
+    session.run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
+    session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
+    session.run_cmd('POS_syslog=$(stat -c %s /var/log/syslog)')
+
+def read_new_logs(session):
+    logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
+    with open("LOGS/LLM_nextcloud.log", "w", encoding="utf-8") as f:
+        f.write(logs)
+    logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
+    with open("LOGS/LLM_audit.log", "w", encoding="utf-8") as f:
+        f.write(logs)
+    logs = session.run_cmd('tail -c +$((POS_syslog+1)) /var/log/syslog')
+    with open("LOGS/LLM_syslog.log", "w", encoding="utf-8") as f:
+        f.write(logs)
 

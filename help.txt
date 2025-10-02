@@ -30,8 +30,6 @@ Unterschiedliche Szenarien, leicht, mittel, schwer
 Hypothese: Je einfacher der Task ist, desto schwieriger ist die Unterscheidung Mensch/LLM.
 
 
-
-
 Synch 04.09.2025:
 Neben command noch eine Begrünung
 Ganz am Anfang Plan auf höhreren Abstraktionsplan
@@ -48,4 +46,7 @@ labels: C:\Users\MoserL\Downloads\russellmitchell.zip\labels\intranet_server\log
 
 
 
-
+02.10.2025
+Ein Szenario auswählen! Das LLM muss es lösen können!
+Marvin testen lassen. Logs vergleichen!
+Syslogs!

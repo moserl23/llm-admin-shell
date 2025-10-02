@@ -1,2 +1,1 @@
-sh -lc 'curl -s -o /dev/null -w "HTTP %{http_code}\n" -H "Host: nextcloud.local" http://127.0.0.1/ || true; echo "--- last error log ---"; tail -n 30 /var/log/apache2/nextcloud.local-error.log'
-tail -n 50 /var/log/apache2/nextcloud.local-access.log
+curl -sS -D - -o /dev/null -H 'Host: nextcloud.local' http://127.0.0.1/ | head -n 1

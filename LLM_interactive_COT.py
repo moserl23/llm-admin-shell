@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from config import API_KEY
-from utils import examples_content, cheatsheet_content, fileEditingRoutine, ShellSession, clean, is_safe_command
+from utils import examples_content, cheatsheet_content, fileEditingRoutine, ShellSession, clean, is_safe_command, init_env_and_log_offsets, read_new_logs
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -191,7 +191,7 @@ if __name__ == "__main__":
 
     # admin agent
     MODEL_ADMIN_AGENT = "gpt-4.1"
-    NUMBER_OF_INTERACTIONS = 15
+    NUMBER_OF_INTERACTIONS = 3
     TEMPERATURE = 0
     ISSUE = "The webpage is not loading correctly. I cannot reach login or dashboard."
 
@@ -201,11 +201,7 @@ if __name__ == "__main__":
 
     session = ShellSession()
     session.connect_root_setSentinel()
-    # set environment variable for cleaner output
-    session.run_cmd("export SYSTEMD_URLIFY=0; export SYSTEMD_PAGER=; export SYSTEMD_COLORS=0")
-    # set environment variable to extract new logs
-    session.run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
-    session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
+    init_env_and_log_offsets(session)
 
     # initialization
     result = {"output": "", "intermediate_steps": []}
@@ -332,11 +328,6 @@ if __name__ == "__main__":
                 f.write(f"\n--- Step {i} ---")
                 f.write(f"Obs:\n{observation}")
         # extract new logs and write to file
-        logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
-        with open("LLM_nextcloud.log", "w", encoding="utf-8") as f:
-            f.write(logs)
-        logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
-        with open("LLM_audit.log", "w", encoding="utf-8") as f:
-            f.write(logs)
+        read_new_logs(session)
         session.close()
     
