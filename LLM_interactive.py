@@ -195,8 +195,8 @@ if __name__ == "__main__":
 
     # =====================Settings-START=====================
     ### LLM
-    NUMBER_OF_INTERACTIONS = 1
-    TEMPERATURE = 1 # this has to be exactly 1 for gpt-5 and gpt-5-mini
+    NUMBER_OF_INTERACTIONS = 30
+    TEMPERATURE = 0 # this has to be exactly 1 for gpt-5 and gpt-5-mini
 
     ### Verification
     FREQUENCY_VERIFICATION = 5
@@ -209,16 +209,16 @@ if __name__ == "__main__":
     TERMINAL_CONTEXT_WINDOW = 10_000
 
     ### time delay
-    BASE_DELAY = 0.2      # minimum thinking time (s)
+    BASE_DELAY = 2      # minimum thinking time (s)
     PER_CHAR = 0.01       # extra seconds per character
     VARIABILITY = 0.2     # fraction of mean used as stddev
-    MAX_DELAY = 5.0       # hard cap
+    MAX_DELAY = 6.0       # hard cap
     
     ### Issue or Task for the Agent
-    ISSUE = "Nextcloud is returning an HTTP 500 (Internal Server Error)."
+    ISSUE = "Nextcloud is responding with Internal Server Error"
 
     ### model selection
-    MODEL_ADMIN_AGENT = "gpt-5-mini"
+    MODEL_ADMIN_AGENT = "gpt-4.1"
     MODEL_TRANSCRIPT_SUMMARIZER = "gpt-4.1-mini"
     MODEL_TERMINAL_SUMMARIZER = "gpt-4.1-mini"
     # =====================Settings-END=====================
@@ -298,15 +298,15 @@ if __name__ == "__main__":
 
     finally:
         # write commands
-        with open("commands.txt", "w", encoding="utf-8") as f:
+        with open("Results/commands.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(commands_list))
-        with open("final_report.txt", "w", encoding="utf-8") as f:
+        with open("Results/final_report.txt", "w", encoding="utf-8") as f:
             f.write(summarize_final(output + "\nList of commands: " + "\n".join(commands_list), MODEL_TRANSCRIPT_SUMMARIZER))
         # write output to file
-        with open("output.txt", "w", encoding="utf-8") as f:
+        with open("Results/output.txt", "w", encoding="utf-8") as f:
             f.write(output)
         # write raw_output to file
-        with open("raw_output.txt", "w", encoding="utf-8") as f:
+        with open("Results/raw_output.txt", "w", encoding="utf-8") as f:
             f.write(raw_output)
         # extract new logs and write to file
         read_new_logs(session)

@@ -185,15 +185,15 @@ if __name__ == "__main__":
 
     # time
     VARIABILITY = 0.2
-    MEAN_DELAY = 3
+    MEAN_DELAY = 4
     MIN_DELAY = 0
-    MAX_DELAY = 5
+    MAX_DELAY = 6
 
     # admin agent
     MODEL_ADMIN_AGENT = "gpt-4.1"
-    NUMBER_OF_INTERACTIONS = 3
+    NUMBER_OF_INTERACTIONS = 30
     TEMPERATURE = 0
-    ISSUE = "The webpage is not loading correctly. I cannot reach login or dashboard."
+    ISSUE = "Nextcloud is responding with Internal Server Error. Fix the problem!"
 
     # CoT
     CHAIN_OF_THOUGHTS_PLANNING = True
@@ -281,7 +281,6 @@ if __name__ == "__main__":
                 "- plan: use the tools plan_hypotheses -> plan_evaluate -> plan_actions.\n",
                 "=== Planning discipline ===\n",
                 "- Tools are HARD-GATED. You MUST call plan_hypotheses → plan_evaluate → plan_actions in order.\n",
-                "- validation / next_command / terminate are unavailable until planning is complete. "
                 "Out-of-order calls will return an ERROR string you must correct.\n",
             ]
         else:
@@ -319,10 +318,10 @@ if __name__ == "__main__":
 
     finally:
         # Logs / transcript (optional)
-        with open("final_report.txt", "w", encoding="utf-8") as f:
+        with open("Results/final_report.txt", "w", encoding="utf-8") as f:
             f.write(result.get("output", ""))
         
-        with open("output.txt", "w", encoding="utf-8") as f:
+        with open("Results/output.txt", "w", encoding="utf-8") as f:
             f.write("\n===== STEPS =====")
             for i, (action, observation) in enumerate(result.get("intermediate_steps", []), 1):
                 f.write(f"\n--- Step {i} ---")

@@ -14,7 +14,7 @@ if __name__ == "__main__":
         init_env_and_log_offsets(session)
         print(">> Ready. Perform your manual steps now. Press Enter when done (Ctrl+C to abort).")
 
-
+        # wait for the human to finish
         input("human is finished?")
 
         # extract new logs and write to file

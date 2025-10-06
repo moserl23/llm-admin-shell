@@ -1,0 +1,109 @@
+
+===== STEPS =====
+--- Step 1 ---Obs:
+PLAN_HYPOTHESES:
+The user reports that Nextcloud is returning an Internal Server Error. Possible causes include: 1) Apache web server is down or misconfigured. 2) PHP errors or misconfiguration. 3) Database connection issues. 4) Nextcloud application error (e.g., maintenance mode, config error). 5) File permission issues. I will rank these based on likelihood and impact.
+--- Step 2 ---Obs:
+PLAN_EVALUATE:
+The most probable hypothesis is a Nextcloud application error or PHP error, as Internal Server Error (HTTP 500) is commonly caused by application-level issues or misconfigurations in PHP. Apache being down would likely result in a connection error, not a 500. Database issues or maintenance mode could also cause 500 errors, but application/PHP errors are the most frequent root cause. I will focus on checking the Nextcloud error logs and PHP configuration first.
+--- Step 3 ---Obs:
+PLAN_ACTIONS:
+1. Check the Apache error log for recent errors related to Nextcloud. 2. Check if Nextcloud is in maintenance mode. 3. Check the status of the Apache and PHP services. 4. Check for database connection issues. 5. Review Nextcloud config.php for obvious misconfigurations. 6. If needed, check file permissions on Nextcloud files.
+--- Step 4 ---Obs:
+VALIDATION_COMMAND: tail -n 20 /var/log/apache2/nextcloud.local-error.log
+OUTPUT:
+
+--- Step 5 ---Obs:
+VALIDATION_COMMAND: /usr/bin/php /var/www/nextcloud/occ maintenance:mode --status
+OUTPUT:
+An unhandled exception has been thrown:
+Doctrine\DBAL\Exception: Failed to connect to the database: An exception occurred in the driver: SQLSTATE[HY000] [1698] Access denied for user 'new_db_user'@'localhost' in /var/www/nextcloud/lib/private/DB/Connection.php:237
+Stack trace:
+#0 /var/www/nextcloud/3rdparty/doctrine/dbal/src/Connection.php(458): OC\DB\Connection->connect()
+#1 /var/www/nextcloud/3rdparty/doctrine/dbal/src/Connection.php(416): Doctrine\DBAL\Connection->getDatabasePlatformVersion()
+#2 /var/www/nextcloud/3rdparty/doctrine/dbal/src/Connection.php(323): Doctrine\DBAL\Connection->detectDatabasePlatform()
+#3 /var/www/nextcloud/lib/private/DB/Connection.php(903): Doctrine\DBAL\Connection->getDatabasePlatform()
+#4 /var/www/nextcloud/lib/private/DB/ConnectionAdapter.php(235): OC\DB\Connection->getDatabaseProvider()
+#5 /var/www/nextcloud/lib/private/DB/QueryBuilder/QueryBuilder.php(96): OC\DB\ConnectionAdapter->getDatabaseProvider()
+#6 /var/www/nextcloud/lib/private/AppConfig.php(1226): OC\DB\QueryBuilder\QueryBuilder->expr()
+#7 /var/www/nextcloud/lib/private/AppConfig.php(243): OC\AppConfig->loadConfig()
+#8 /var/www/nextcloud/lib/private/AppConfig.php(1366): OC\AppConfig->searchValues()
+#9 /var/www/nextcloud/lib/private/App/AppManager.php(136): OC\AppConfig->getValues()
+#10 /var/www/nextcloud/lib/private/App/AppManager.php(157): OC\App\AppManager->getInstalledAppsValues()
+#11 /var/www/nextcloud/lib/private/legacy/OC_App.php(188): OC\App\AppManager->getInstalledApps()
+#12 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC_App::getEnabledApps()
+#13 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#14 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#15 /var/www/nextcloud/console.php(28): require_once('...')
+#16 /var/www/nextcloud/occ(33): require_once('...')
+#17 {main}
+--- Step 6 ---Obs:
+VALIDATION_COMMAND: systemctl status mysql | head -n 20
+OUTPUT:
+● mariadb.service - MariaDB 10.11.13 database server
+     Loaded: loaded (/usr/lib/systemd/system/mariadb.service; enabled; preset: enabled)
+     Active: active (running) since Thu 2025-10-02 11:19:05 UTC; 1h 18min ago
+       Docs: man:mariadbd(8)
+             https://mariadb.com/kb/en/library/systemd/
+    Process: 583 ExecStartPre=/usr/bin/install -m 755 -o mysql -g root -d /var/run/mysqld (code=exited, status=0/SUCCESS)
+    Process: 639 ExecStartPre=/bin/sh -c systemctl unset-environment _WSREP_START_POSITION (code=exited, status=0/SUCCESS)
+    Process: 661 ExecStartPre=/bin/sh -c [ ! -e /usr/bin/galera_recovery ] && VAR= ||   VAR=`/usr/bin/galera_recovery`; [ $? -eq 0 ]   && systemctl set-environment _WSREP_START_POSITION=$VAR || exit 1 (code=exited, status=0/SUCCESS)
+    Process: 858 ExecStartPost=/bin/sh -c systemctl unset-environment _WSREP_START_POSITION (code=exited, status=0/SUCCESS)
+    Process: 860 ExecStartPost=/etc/mysql/debian-start (code=exited, status=0/SUCCESS)
+   Main PID: 813 (mariadbd)
+     Status: "Taking your SQL requests now..."
+      Tasks: 15 (limit: 62283)
+     Memory: 139.3M (peak: 139.8M)
+        CPU: 5.756s
+     CGroup: /system.slice/mariadb.service
+             └─813 /usr/sbin/mariadbd
+
+Oct 02 12:37:03 server mariadbd[813]: 2025-10-02 12:37:03 1644 [Warning] Access denied for user 'new_db_user'@'localhost'
+Oct 02 12:37:03 server mariadbd[813]: 2025-10-02 12:37:03 1645 [Warning] Access denied for user 'new_db_user'@'localhost'
+--- Step 7 ---Obs:
+VALIDATION_COMMAND: cat /var/www/nextcloud/config/config.php | grep -E "dbuser|dbname|dbhost|dbpassword"
+OUTPUT:
+'dbname' => 'nextclouddb',
+  'dbhost' => 'localhost',
+  'dbuser' => 'new_db_user',
+  'dbpassword' => 'passw0rd',
+--- Step 8 ---Obs:
+VALIDATION_COMMAND: mysql -u new_db_user -p'passw0rd' -e 'SHOW DATABASES;'
+OUTPUT:
+ERROR 1698 (28000): Access denied for user 'new_db_user'@'localhost'
+--- Step 9 ---Obs:
+VALIDATION_COMMAND: mysql -u root -e "SELECT User,Host FROM mysql.user WHERE User='new_db_user';"
+OUTPUT:
+
+--- Step 10 ---Obs:
+VALIDATION_COMMAND: mysql -u root -e "SELECT User,Host FROM mysql.user;"
+OUTPUT:
++---------------+-----------+
+| User          | Host      |
++---------------+-----------+
+| database_user | localhost |
+| mariadb.sys   | localhost |
+| mysql         | localhost |
+| nc_user2      | localhost |
+| nextcloud     | localhost |
+| root          | localhost |
++---------------+-----------+
+--- Step 11 ---Obs:
+NEXT_COMMAND: mysql -u root -e "CREATE USER 'new_db_user'@'localhost' IDENTIFIED BY 'passw0rd'; GRANT ALL PRIVILEGES ON nextclouddb.* TO 'new_db_user'@'localhost'; FLUSH PRIVILEGES;"
+OUTPUT:
+
+--- Step 12 ---Obs:
+VALIDATION_COMMAND: mysql -u new_db_user -p'passw0rd' -e 'SHOW DATABASES;'
+OUTPUT:
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| nextclouddb        |
++--------------------+
+--- Step 13 ---Obs:
+VALIDATION_COMMAND: curl -s -o /dev/null -w '%{http_code}\n' http://localhost/
+OUTPUT:
+200
+--- Step 14 ---Obs:
+TERMINATE: Nextcloud now returns HTTP 200, indicating the Internal Server Error is resolved. The root cause was a missing database user; after creating the user and granting privileges, the service is healthy.

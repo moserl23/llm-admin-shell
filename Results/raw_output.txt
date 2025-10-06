@@ -1,0 +1,312 @@
+
+$ curl -I http://localhost | head -n 10
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     4    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+
+Date: Thu, 02 Oct 2025 13:34:29 GMT
+
+Server: Apache/2.4.58 (Ubuntu)
+
+Upgrade: h2,h2c
+
+Connection: Upgrade
+
+Last-Modified: Wed, 06 Aug 2025 10:00:30 GMT
+
+ETag: "4-63baf6938d3c4"
+
+Accept-Ranges: bytes
+
+Content-Length: 4
+
+Content-Type: text/html
+
+$ tail -n 20 /var/log/apache2/nextcloud.local-error.log
+
+
+$ tail -n 20 /var/log/apache2/nextcloud.local-error.log
+
+
+$ tail -n 20 /var/log/apache2/nextcloud.local-error.log
+
+
+$ /usr/bin/php /var/www/nextcloud/occ log:tail --lines=20
+An unhandled exception has been thrown:
+Doctrine\DBAL\Exception: Failed to connect to the database: An exception occurred in the driver: SQLSTATE[HY000] [1698] Access denied for user 'USER_OF_DB'@'localhost' in /var/www/nextcloud/lib/private/DB/Connection.php:237
+Stack trace:
+#0 /var/www/nextcloud/3rdparty/doctrine/dbal/src/Connection.php(458): OC\DB\Connection->connect()
+#1 /var/www/nextcloud/3rdparty/doctrine/dbal/src/Connection.php(416): Doctrine\DBAL\Connection->getDatabasePlatformVersion()
+#2 /var/www/nextcloud/3rdparty/doctrine/dbal/src/Connection.php(323): Doctrine\DBAL\Connection->detectDatabasePlatform()
+#3 /var/www/nextcloud/lib/private/DB/Connection.php(903): Doctrine\DBAL\Connection->getDatabasePlatform()
+#4 /var/www/nextcloud/lib/private/DB/ConnectionAdapter.php(235): OC\DB\Connection->getDatabaseProvider()
+#5 /var/www/nextcloud/lib/private/DB/QueryBuilder/QueryBuilder.php(96): OC\DB\ConnectionAdapter->getDatabaseProvider()
+#6 /var/www/nextcloud/lib/private/AppConfig.php(1226): OC\DB\QueryBuilder\QueryBuilder->expr()
+#7 /var/www/nextcloud/lib/private/AppConfig.php(243): OC\AppConfig->loadConfig()
+#8 /var/www/nextcloud/lib/private/AppConfig.php(1366): OC\AppConfig->searchValues()
+#9 /var/www/nextcloud/lib/private/App/AppManager.php(136): OC\AppConfig->getValues()
+#10 /var/www/nextcloud/lib/private/App/AppManager.php(157): OC\App\AppManager->getInstalledAppsValues()
+#11 /var/www/nextcloud/lib/private/legacy/OC_App.php(188): OC\App\AppManager->getInstalledApps()
+#12 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC_App::getEnabledApps()
+#13 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#14 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#15 /var/www/nextcloud/console.php(28): require_once('...')
+#16 /var/www/nextcloud/occ(33): require_once('...')
+#17 {main}
+
+$ curl -I http://localhost | head -n 10
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     4    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+
+Date: Thu, 02 Oct 2025 13:34:48 GMT
+
+Server: Apache/2.4.58 (Ubuntu)
+
+Upgrade: h2,h2c
+
+Connection: Upgrade
+
+Last-Modified: Wed, 06 Aug 2025 10:00:30 GMT
+
+ETag: "4-63baf6938d3c4"
+
+Accept-Ranges: bytes
+
+Content-Length: 4
+
+Content-Type: text/html
+
+$ systemctl status mysql | head -n 20
+● mariadb.service - MariaDB 10.11.13 database server
+     Loaded: loaded (/usr/lib/systemd/system/mariadb.service; enabled; preset: enabled)
+     Active: active (running) since Thu 2025-10-02 11:19:05 UTC; 2h 15min ago
+       Docs: man:mariadbd(8)
+             https://mariadb.com/kb/en/library/systemd/
+    Process: 583 ExecStartPre=/usr/bin/install -m 755 -o mysql -g root -d /var/run/mysqld (code=exited, status=0/SUCCESS)
+    Process: 639 ExecStartPre=/bin/sh -c systemctl unset-environment _WSREP_START_POSITION (code=exited, status=0/SUCCESS)
+    Process: 661 ExecStartPre=/bin/sh -c [ ! -e /usr/bin/galera_recovery ] && VAR= ||   VAR=`/usr/bin/galera_recovery`; [ $? -eq 0 ]   && systemctl set-environment _WSREP_START_POSITION=$VAR || exit 1 (code=exited, status=0/SUCCESS)
+    Process: 858 ExecStartPost=/bin/sh -c systemctl unset-environment _WSREP_START_POSITION (code=exited, status=0/SUCCESS)
+    Process: 860 ExecStartPost=/etc/mysql/debian-start (code=exited, status=0/SUCCESS)
+   Main PID: 813 (mariadbd)
+     Status: "Taking your SQL requests now..."
+      Tasks: 11 (limit: 62283)
+     Memory: 139.6M (peak: 140.4M)
+        CPU: 7.654s
+     CGroup: /system.slice/mariadb.service
+             └─813 /usr/sbin/mariadbd
+
+Oct 02 13:34:46 server mariadbd[813]: 2025-10-02 13:34:46 1810 [Warning] Access denied for user 'USER_OF_DB'@'localhost'
+Oct 02 13:34:46 server mariadbd[813]: 2025-10-02 13:34:46 1811 [Warning] Access denied for user 'USER_OF_DB'@'localhost'
+
+$ grep -E "'dbuser'|'dbpassword'|'dbname'" /var/www/nextcloud/config/config.php
+'dbname' => 'nextclouddb',
+  'dbuser' => 'USER_OF_DB',
+  'dbpassword' => 'change_this',
+
+$ mysql -e "SELECT User,Host,authentication_string,plugin FROM mysql.user WHERE User='USER_OF_DB' AND Host='localhost';"
+
+
+$ mysql -u USER_OF_DB -pchange_this -e 'SHOW DATABASES;'
+ERROR 1698 (28000): Access denied for user 'USER_OF_DB'@'localhost'
+
+$ curl -I http://localhost | head -n 10
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     4    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+
+Date: Thu, 02 Oct 2025 13:35:10 GMT
+
+Server: Apache/2.4.58 (Ubuntu)
+
+Upgrade: h2,h2c
+
+Connection: Upgrade
+
+Last-Modified: Wed, 06 Aug 2025 10:00:30 GMT
+
+ETag: "4-63baf6938d3c4"
+
+Accept-Ranges: bytes
+
+Content-Length: 4
+
+Content-Type: text/html
+
+$ mysql -e "SELECT User,Host,authentication_string,plugin FROM mysql.user WHERE User='USER_OF_DB' AND Host='localhost';"
+
+
+$ mysql -e "CREATE USER 'USER_OF_DB'@'localhost' IDENTIFIED BY 'change_this';"
+
+
+$ mysql -e "GRANT ALL PRIVILEGES ON nextclouddb.* TO 'USER_OF_DB'@'localhost'; FLUSH PRIVILEGES;"
+
+
+$ /usr/bin/php /var/www/nextcloud/occ maintenance:repair
+An unhandled exception has been thrown:
+RedisException: Permission denied in /var/www/nextcloud/lib/private/RedisFactory.php:104
+Stack trace:
+#0 /var/www/nextcloud/lib/private/RedisFactory.php(104): Redis->pconnect()
+#1 /var/www/nextcloud/lib/private/RedisFactory.php(148): OC\RedisFactory->create()
+#2 /var/www/nextcloud/lib/private/Memcache/Redis.php(53): OC\RedisFactory->getInstance()
+#3 /var/www/nextcloud/lib/private/Memcache/Redis.php(59): OC\Memcache\Redis->getCache()
+#4 /var/www/nextcloud/lib/private/App/InfoParser.php(32): OC\Memcache\Redis->get()
+#5 /var/www/nextcloud/lib/private/App/AppManager.php(780): OC\App\InfoParser->parse()
+#6 /var/www/nextcloud/lib/private/App/AppManager.php(765): OC\App\AppManager->getAppInfoByPath()
+#7 /var/www/nextcloud/lib/private/AppFramework/App.php(49): OC\App\AppManager->getAppInfo()
+#8 /var/www/nextcloud/lib/private/legacy/OC_App.php(111): OC\AppFramework\App::buildAppNamespace()
+#9 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(76): OC_App::registerAutoloading()
+#10 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC\AppFramework\Bootstrap\Coordinator->registerApps()
+#11 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#12 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#13 /var/www/nextcloud/console.php(28): require_once('...')
+#14 /var/www/nextcloud/occ(33): require_once('...')
+#15 {main}
+
+$ curl -I http://localhost | head -n 10
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     4    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+
+Date: Thu, 02 Oct 2025 13:35:33 GMT
+
+Server: Apache/2.4.58 (Ubuntu)
+
+Upgrade: h2,h2c
+
+Connection: Upgrade
+
+Last-Modified: Wed, 06 Aug 2025 10:00:30 GMT
+
+ETag: "4-63baf6938d3c4"
+
+Accept-Ranges: bytes
+
+Content-Length: 4
+
+Content-Type: text/html
+
+$ grep -i redis /var/www/nextcloud/config/config.php | head -n 20
+'redis' => 
+    'host' => '/var/run/redis/redis-server.sock',
+  'memcache.local' => '\\OC\\Memcache\\Redis',
+  'memcache.distributed' => '\\OC\\Memcache\\Redis',
+  'memcache.locking' => '\\OC\\Memcache\\Redis',
+
+$ ls -l /var/run/redis/redis-server.sock
+srwxrwx--- 1 redis redis 0 Oct  2 11:19 /var/run/redis/redis-server.sock
+
+$ ps aux | grep redis-server | grep -v grep
+redis        585  0.2  0.1  67864 13936 ?        Ssl  11:19   0:24 /usr/bin/redis-server 127.0.0.1:6379
+
+$ ls -ld /var/run/redis /var/run/redis/redis-server.sock
+drwxr-sr-x 2 redis redis 80 Oct  2 11:19 /var/run/redis
+srwxrwx--- 1 redis redis  0 Oct  2 11:19 /var/run/redis/redis-server.sock
+
+$ curl -I http://localhost | head -n 10
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     4    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+
+Date: Thu, 02 Oct 2025 13:35:52 GMT
+
+Server: Apache/2.4.58 (Ubuntu)
+
+Upgrade: h2,h2c
+
+Connection: Upgrade
+
+Last-Modified: Wed, 06 Aug 2025 10:00:30 GMT
+
+ETag: "4-63baf6938d3c4"
+
+Accept-Ranges: bytes
+
+Content-Length: 4
+
+Content-Type: text/html
+
+$ usermod -a -G redis www-data
+
+
+$ systemctl restart apache2
+
+
+$ systemctl restart redis-server
+
+
+$ /usr/bin/php /var/www/nextcloud/occ maintenance:repair
+An unhandled exception has been thrown:
+RedisException: Permission denied in /var/www/nextcloud/lib/private/RedisFactory.php:104
+Stack trace:
+#0 /var/www/nextcloud/lib/private/RedisFactory.php(104): Redis->pconnect()
+#1 /var/www/nextcloud/lib/private/RedisFactory.php(148): OC\RedisFactory->create()
+#2 /var/www/nextcloud/lib/private/Memcache/Redis.php(53): OC\RedisFactory->getInstance()
+#3 /var/www/nextcloud/lib/private/Memcache/Redis.php(59): OC\Memcache\Redis->getCache()
+#4 /var/www/nextcloud/lib/private/App/InfoParser.php(32): OC\Memcache\Redis->get()
+#5 /var/www/nextcloud/lib/private/App/AppManager.php(780): OC\App\InfoParser->parse()
+#6 /var/www/nextcloud/lib/private/App/AppManager.php(765): OC\App\AppManager->getAppInfoByPath()
+#7 /var/www/nextcloud/lib/private/AppFramework/App.php(49): OC\App\AppManager->getAppInfo()
+#8 /var/www/nextcloud/lib/private/legacy/OC_App.php(111): OC\AppFramework\App::buildAppNamespace()
+#9 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(76): OC_App::registerAutoloading()
+#10 /var/www/nextcloud/lib/private/AppFramework/Bootstrap/Coordinator.php(48): OC\AppFramework\Bootstrap\Coordinator->registerApps()
+#11 /var/www/nextcloud/lib/base.php(675): OC\AppFramework\Bootstrap\Coordinator->runInitialRegistration()
+#12 /var/www/nextcloud/lib/base.php(1171): OC::init()
+#13 /var/www/nextcloud/console.php(28): require_once('...')
+#14 /var/www/nextcloud/occ(33): require_once('...')
+#15 {main}
+
+$ curl -I http://localhost | head -n 10
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     4    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+HTTP/1.1 200 OK
+
+Date: Thu, 02 Oct 2025 13:36:15 GMT
+
+Server: Apache/2.4.58 (Ubuntu)
+
+Upgrade: h2,h2c
+
+Connection: Upgrade
+
+Last-Modified: Wed, 06 Aug 2025 10:00:30 GMT
+
+ETag: "4-63baf6938d3c4"
+
+Accept-Ranges: bytes
+
+Content-Length: 4
+
+Content-Type: text/html
+
+$ ls -l /var/www/nextcloud | grep config
+drwxr-xr-x  2 www-data www-data    4096 Oct  2 13:33 config
+
+$ ls -l /var/run/redis/redis-server.sock
+srwxrwx--- 1 redis redis 0 Oct  2 13:36 /var/run/redis/redis-server.sock
+
+$ ls -l /var/run/redis/redis-server.sock
+srwxrwx--- 1 redis redis 0 Oct  2 13:36 /var/run/redis/redis-server.sock
+
+$ ls -l /var/run/redis | head -n 20
+total 4
+-rw-rw---- 1 redis redis 5 Oct  2 13:36 redis-server.pid
+srwxrwx--- 1 redis redis 0 Oct  2 13:36 redis-server.sock
