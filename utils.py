@@ -1,6 +1,8 @@
 # helpers.py
 import re
 import pexpect
+import time
+import random
 
 
 # read relevant files
@@ -16,6 +18,88 @@ class ShellSession:
     def __init__(self, sentinel="<<<READY>>> "):
         self.sentinel = sentinel
         self.child = pexpect.spawn("/bin/bash", ["-i"], encoding="utf-8", timeout=30)
+
+    def start_vim(self, filename):
+        # send a command
+        self.child.sendline(f"sudo vim {filename}")
+        # wait for vim start
+        time.sleep(2.0)
+
+    def print_file_vim(self):
+        # deactivate interactive features and print content of file
+        self.child.send(":set nomore nonu norelativenumber\r")
+        self.child.send(":echo '<<<BEGIN>>>' | 1,$print | echo '<<<END>>>'\r")
+
+        # now capture between the markers (two captures per marker are necessary)
+        self.child.expect("<<<BEGIN>>>", timeout=5)
+        self.child.expect("<<<END>>>", timeout=5)
+        self.child.expect("<<<BEGIN>>>", timeout=5)
+        self.child.expect("<<<END>>>", timeout=5)
+        raw = self.child.before
+
+        ANSI_RE = re.compile(
+            r"(?:\x1B[@-Z\\-_]"                # ESC Fe
+            r"|\x1B\[[0-?]*[ -/]*[@-~]"        # ESC [ ... CSI
+            r"|\x1B\][^\x07]*\x07"             # OSC ... BEL
+            r"|\x1B[P^_].*?\x1B\\)"            # DCS/PM/APC ... ST
+        )
+
+        def strip_tty(s: str) -> str:
+            s = ANSI_RE.sub("", s)
+            s = s.replace("\r", "")
+            return s
+        
+        # clean output
+        text = strip_tty(raw).strip()
+        return text
+
+    def edit_file_vim(self, keystrokes):
+        
+        for seq in keystrokes:
+            self.child.send(seq)
+            time.sleep(random.uniform(0.05, 0.25))  # human-like delays
+
+    def end_vim(self):
+        # make sure the edit is written and vim quits
+        self.child.send(":wq\r")
+
+        # now wait for your normal shell sentinel
+        try:
+            self.child.expect(self.sentinel, timeout=30)
+        except pexpect.TIMEOUT:
+            print("timeout --> try vim_escape_hatch")
+            self._vim_escape_hatch()
+
+    def _vim_escape_hatch(self, wait=5):
+        """
+        Minimal recovery if we're still inside Vim:
+        ESC to leave any mode → clear hit-enter → force quit.
+        """
+        # leave insert/visual/cmdline
+        self.child.send("\x1b")      # ESC
+        # clear any "Press ENTER" / -- More --
+        self.child.send("\r")        # ENTER
+        # try a force quit-all
+        self.child.send(":qa!\r")
+        try:
+            self.child.expect(self.sentinel, timeout=wait)
+            return
+        except pexpect.TIMEOUT:
+            pass
+
+        # plan B: single force quit
+        self.child.send(":q!\r")
+        try:
+            self.child.expect(self.sentinel, timeout=wait)
+            return
+        except pexpect.TIMEOUT:
+            pass
+
+        # last resort: Ctrl-C then force quit again
+        self.child.send("\x03")      # Ctrl-C
+        self.child.send("\r")        # clear any prompt
+        self.child.send(":qa!\r")
+        self.child.expect(self.sentinel, timeout=wait)
 
 
     def connect_root_setSentinel(self) -> None:
