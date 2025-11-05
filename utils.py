@@ -101,7 +101,6 @@ class ShellSession:
         self.child.send(":qa!\r")
         self.child.expect(self.sentinel, timeout=wait)
 
-
     def connect_root_setSentinel(self) -> None:
         '''
         Establish an SSH connection to the server, escalate to a root shell via sudo -i,
