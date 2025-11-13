@@ -33,8 +33,8 @@ def fix(session):
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
-    #config(session)  # call this to break
-    fix(session)       # call this to fix
+    config(session)  # call this to break
+    #fix(session)       # call this to fix
     session.close()
 
 

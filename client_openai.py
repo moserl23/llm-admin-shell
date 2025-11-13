@@ -12,11 +12,14 @@ from mcp.client.stdio import stdio_client
 from openai import OpenAI  # OpenAI SDK
 from dotenv import load_dotenv
 
+# ---------- Parameter section! ----------
 DEBUG_FLAG = False
+MODEL = "gpt-4.1"
+TEMPERATURE = 0.1
 
 # --- Load .env BEFORE reading env vars ---
 load_dotenv()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", MODEL)
 
 # ---------- Token + snapshot helpers (unchanged) ----------
 
@@ -205,12 +208,13 @@ def _trim_messages_to_budget(messages: List[Dict[str, Any]], max_input_tokens: i
     flat_kept = [m for bundle in kept for m in bundle]
     return system_user_msgs + flat_kept
 
-
 SYSTEM_PROMPT = (
     "You are an automated web assistant restricted to ONLY interact with the website 'nextcloud.local'. "
     "For login use the following credentials:\n"
     "  Username: admin\n"
     "  Password: changeme\n"
+    "Perform the assigned task using as few interactions as possible — only the minimum necessary steps. "
+    "Do not continue indefinitely or repeat actions. "
     "After completing the task, produce a concise plain-text report of what happened and stop. "
     "Do not ask the user for follow-up steps."
 )
@@ -286,7 +290,7 @@ class MCPClient:
                 messages=messages,
                 tools=openai_tools if openai_tools else None,
                 tool_choice="auto",
-                temperature=0.1,
+                temperature=TEMPERATURE,
             )
 
             msg = completion.choices[0].message

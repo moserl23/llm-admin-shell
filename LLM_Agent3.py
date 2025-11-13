@@ -7,17 +7,24 @@ from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 
-
-
-
 # Typing
-from typing import TypedDict, Optional, Annotated, Sequence
+from typing import TypedDict, Optional, Annotated, Sequence, List
+from pydantic import BaseModel
 
 # Config
 from config import API_KEY
-from utils import examples_content, cheatsheet_content, ShellSession
+from utils import examples_content, cheatsheet_content, ShellSession, init_env_and_log_offsets, read_new_logs
 import subprocess
 
+# additional tool code
+from vim_tool import make_use_vim
+
+# global variables
+global_session = ShellSession()
+global_session.connect_root_setSentinel()
+init_env_and_log_offsets(global_session)
+# vim-llm
+vim_planner = ChatOpenAI(model="gpt-4.1", temperature=0.3, api_key=API_KEY)
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -31,7 +38,7 @@ def decision_node(state: AgentState) -> AgentState:
         "You are an ops remediator for Ubuntu 24.04 (LAMP, Nextcloud PHP 8.3.6).\n\n",
         "=== Agent tools ===\n",
         "1. `next_command(cmd: str)` — run a shell command.\n"
-        "2. `use_browser(query: str)` — interact with a web UI.\n"
+        "2. `use_browser(query: str)` — interact with the web UI (prefer over curl).\n"
         "3. `use_vim(filename: str, query: str)` — edit files.\n",
     ]
     system_prompt = "".join(system_prompt_parts)
@@ -75,9 +82,10 @@ def next_command(cmd: str) -> str:
     System tools available:
         - curl (HTTP), net-tools, top (batch mode: "top -b -n 1")
     """
-    # I will write this code later!
-    print("cmd", cmd)
-    return "Success"
+    print("------------------------- Entered next_command -------------------------")
+    print("cmd:", cmd)
+    raw_result = global_session.run_cmd(cmd)
+    return raw_result[-5000:] # Value is hard coded!
 
 
 
@@ -92,6 +100,9 @@ def use_browser(query: str) -> str:
     Returns:
         str: A brief summary of the browser tasks performed.
     """
+
+    print("------------------------- Entered use_browser -------------------------")
+
     cmd = ["python", "client_openai.py", "--playwright"]
     
     # Run the command, pass the query via stdin, and capture the output
@@ -110,50 +121,27 @@ def use_browser(query: str) -> str:
         return f"Browser tool error: {stderr.strip()}"
 
     print("Query:", query)
-    print("\n\nBrowser Tool Output:")
-    print(stdout)
-    print("Browser Tool End\n\n")
+    #print("\n\nBrowser Tool Output:")
+    #print(stdout)
+    #print("Browser Tool End\n\n")
 
     clean_output = "\n".join(
         line for line in stdout.splitlines() if not line.startswith("Query:")
     ).strip()
 
-    print("Query:", query)
-    print(clean_output)
 
     return clean_output
 
 
-
-@tool
-def use_vim(filename: str, query: str) -> str:
-    """
-    Edits or modifies the specified file in a text editor (simulating Vim behavior) based on the given instructions.
-
-    Args:
-        filename (str): The name or path of the file to open or edit.
-        query (str): A natural language description of the desired file modifications.
-            Examples include adding new lines, changing specific text, deleting sections,
-            or saving the file after editing.
-
-    Returns:
-        str: A short summary or confirmation of the changes performed on the file.
-
-    Notes:
-        - Use this tool whenever you need to modify a file's contents.
-        - The query should clearly describe what to edit or update in the file.
-    """
-    print("vim-filename:", filename)
-    print("vim-query:", query)
-    return "Success"
-
-
+# Build the tool bound to THIS session + planner
+use_vim = make_use_vim(global_session, vim_planner)
 
 tools = [next_command, use_browser, use_vim]
     
 # ---------- LLM client ----------
-model = ChatOpenAI(model="gpt-4o", api_key=API_KEY).bind_tools(tools=tools)
+model = ChatOpenAI(model="gpt-4o", api_key=API_KEY, temperature=0.1).bind_tools(tools=tools)
     #tool_choice={"type": "function", "function": {"name": "it_is_enough"}}  # <-- correct shape
+
 
 
 # ---------- Build graph ----------
@@ -186,7 +174,7 @@ graph.add_edge("tool_node", "decision_node")
 app = graph.compile()
 
 if __name__ == "__main__":
-    result = app.invoke({"messages": [HumanMessage(content="Call the browser-tool to check the website.")]})
+    result = app.invoke({"messages": [HumanMessage(content="Nextcloud returns a 500 Error.")]})
 
     print("Output:")
     for message in result["messages"]:
@@ -195,4 +183,6 @@ if __name__ == "__main__":
         else:
             message.pretty_print()
 
-    # Add a small message
+
+    read_new_logs(global_session)
+    global_session.close()
