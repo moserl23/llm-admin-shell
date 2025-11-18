@@ -18,6 +18,7 @@ import subprocess
 
 # additional tool code
 from vim_tool import make_use_vim
+from new_vim_agent import run_file_edit_agent
 
 # global variables
 global_session = ShellSession()
@@ -133,8 +134,38 @@ def use_browser(query: str) -> str:
     return clean_output
 
 
-# Build the tool bound to THIS session + planner
-use_vim = make_use_vim(global_session, vim_planner)
+@tool
+def use_vim(filename: str, query: str) -> str:
+    """
+    Edit or modify a file using Vim-like keystrokes planned by an LLM.
+
+    Args:
+        filename (str): Full absolute path of the file to open or edit.
+        query (str): Natural language description of the desired edits.
+
+    Returns:
+        str: Status message indicating success or failure of the edit.
+    """
+
+    print("vim-tool:")
+    print("filename:", filename)
+    print("query:", query)
+
+    global_session.start_vim(filename=filename)
+
+    file_content = global_session.print_file_vim()
+
+    result = run_file_edit_agent(query=query, file_content=file_content)
+
+    updated_file  = result["updated_file"]
+    explanation   = result["explaination"]
+
+    global_session.overwrite_vim(updated_file)
+
+    global_session.end_vim()
+
+    return explanation
+
 
 tools = [next_command, use_browser, use_vim]
     
@@ -174,7 +205,7 @@ graph.add_edge("tool_node", "decision_node")
 app = graph.compile()
 
 if __name__ == "__main__":
-    result = app.invoke({"messages": [HumanMessage(content="Nextcloud returns a 500 Error.")]})
+    result = app.invoke({"messages": [HumanMessage(content="In the root directory there is a file called ~/my_config.toml. Use the use_vim tool to perform an edit. Change in the server section the port to 7711.")]})
 
     print("Output:")
     for message in result["messages"]:

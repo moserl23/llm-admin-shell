@@ -1,0 +1,123 @@
+# ============================================================
+#   MyService – Example Ubuntu Configuration File
+#   Location: /etc/myservice/config.toml
+#   Version: 2.0.1
+# ============================================================
+
+# ------------------------------------------------------------
+# Basic application metadata
+# ------------------------------------------------------------
+[app]
+name        = "MyService"
+environment = "production"     # development | staging | production
+timezone    = "Europe/Vienna"
+pid_file    = "/run/myservice.pid"
+
+# Directory structure
+data_dir = "/var/lib/myservice"
+log_dir  = "/var/log/myservice"
+tmp_dir  = "/var/tmp/myservice"
+
+# ------------------------------------------------------------
+# Networking configuration
+# ------------------------------------------------------------
+[network]
+listen_address = "0.0.0.0"
+listen_port    = 8080
+# Allowed CIDR ranges for API access
+allowed_clients = [
+    "10.0.0.0/24",
+    "192.168.1.0/24"
+]
+
+# TLS/HTTPS
+[network.tls]
+enabled     = true
+key_file    = "/etc/myservice/tls/myservice.key"
+cert_file   = "/etc/myservice/tls/myservice.crt"
+ca_file     = "/etc/ssl/certs/ca-certificates.crt"
+
+# ------------------------------------------------------------
+# Authentication
+# ------------------------------------------------------------
+[auth]
+mode = "local"   # local | ldap | oidc
+
+[auth.local]
+password_min_length = 10
+password_require_special = true
+
+[auth.ldap]
+enabled       = false
+url           = "ldap://ldap.example.com"
+base_dn       = "dc=example,dc=com"
+user_attr     = "uid"
+
+[auth.oidc]
+enabled        = false
+client_id      = ""
+client_secret  = ""
+issuer_url     = ""
+
+# ------------------------------------------------------------
+# Logging configuration
+# ------------------------------------------------------------
+[logging]
+level       = "INFO"    # DEBUG, INFO, WARNING, ERROR
+file        = "/var/log/myservice/app.log"
+max_size_mb = 50
+rotation    = 7         # keep last 7 rotated logs
+
+# ------------------------------------------------------------
+# Database configuration
+# ------------------------------------------------------------
+[database]
+engine   = "postgresql"
+host     = "127.0.0.1"
+port     = 5432
+user     = "myservice"
+password = "CHANGE_ME"
+dbname   = "myservice_prod"
+pool_size = 10
+timeout_seconds = 5
+
+# ------------------------------------------------------------
+# Background jobs
+# ------------------------------------------------------------
+[jobs]
+enable_scheduler = true
+concurrency      = 4
+
+[[jobs.cron]]
+name     = "cleanup_temp_files"
+schedule = "0 */6 * * *"   # every 6 hours
+command  = "/usr/bin/find /var/tmp/myservice -type f -mtime +1 -delete"
+
+[[jobs.cron]]
+name     = "send_metrics"
+schedule = "*/5 * * * *"  # every 5 minutes
+command  = "/usr/local/bin/myservice-metrics"
+
+# ------------------------------------------------------------
+# API rate limiting
+# ------------------------------------------------------------
+[rate_limit]
+enabled       = true
+requests_per_minute = 120
+ban_duration_seconds = 300
+
+# ------------------------------------------------------------
+# Feature flags
+# ------------------------------------------------------------
+[features]
+enable_metrics     = true
+enable_experimental = false
+enable_cache        = true
+
+# Cache tuning
+[cache]
+type        = "redis"
+host        = "127.0.0.1"
+port        = 6379
+db          = 3
+ttl_seconds = 3600

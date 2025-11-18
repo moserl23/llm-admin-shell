@@ -141,7 +141,16 @@ class ShellSession:
         return ShellSession.strip_tty(raw).strip()
 
 
+    def overwrite_vim(self, updated_content):
+        self.child.send("\x1b"); self.child.send("\r")
+        self.child.send(":0,$d\r")   # delete all lines
+        self.child.send("i")         # insert mode
+        self.child.send(updated_content)
+        self.child.send("\x1b")
+
     def print_file_vim(self):
+        # Clear any pending prompt / mode
+        self.child.send("\x1b"); self.child.send("\r")
         # Deactivate interactive features and print content of file
         self.child.send(":set nomore nonu norelativenumber\r")
         #self.child.send(":echo '<<<BEGIN>>>' | silent! 1,$print | echo '<<<END>>>'\r")

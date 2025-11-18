@@ -16,33 +16,10 @@ from dotenv import load_dotenv
 # -------------------- Config --------------------
 DEBUG = True
 DEFAULT_SOCKET = "/tmp/nvim"   # your local UNIX socket (socat bridge)
-MAX_TOOL_STEPS = 20
+MAX_TOOL_STEPS = 40
 TEMPERATURE = 0.1
 DEFAULT_MODEL = "gpt-4.1"  # or your preferred model
-
-SYSTEM_PROMPT = (
-    "You are a precise Neovim automation agent, currently operating inside an active Neovim session with a file already opened.\n"
-    "Goal: complete the user's request with the minimum necessary actions using the available tools.\n"
-    "Do not loop or repeat actions unnecessarily.\n"
-    "When you believe the task is complete, return a concise plain-text summary of what you did and stop.\n"
-    "Guidelines:\n"
-    " - The current file is already open in Neovim.\n"
-    " - Use 'vim_command' for normal or Ex-mode commands.\n"
-    " - Avoid destructive actions unless explicitly requested.\n"
-    " - Do not ask the user for follow-up steps.\n"
-    "\n"
-    "Conditional Edits:\n"
-    " - If the user gives a condition (e.g., 'if value < X then change it'), ALWAYS:\n"
-    "     1) Read the current value from the buffer.\n"
-    "     2) Evaluate the condition.\n"
-    "     3) Apply the change only if the condition is true.\n"
-    " - Never assume values; always extract them.\n"
-    "\n"
-    "Example:\n"
-    "   :keepjumps /timeout_seconds/\n"
-    "   :let v = str2nr(matchstr(getline('.'), '\\d\\+'))\n"
-    "   :if v < 4 | call setline('.', '  timeout_seconds: 25') | endif\n"
-)
+MAX_BLOCK = 400
 
 
 SYSTEM_PROMPT = (
@@ -66,6 +43,9 @@ SYSTEM_PROMPT = (
     "Validation:\n"
     " - After performing edits, ALWAYS re-read the affected line(s) to confirm that the expected change has been applied.\n"
     "\n"
+    "- Searching: Try multiple simple searches first (section header -> key name). Don't give up after one failed pattern.\n"
+    "- Editing: Make minimal changes only. Do NOT alter formatting or unrelated lines, and never claim 'no changes' if anything was modified.\n"
+    "\n"
     "Example:\n"
     "   :keepjumps /timeout_seconds/\n"
     "   :let v = str2nr(matchstr(getline('.'), '\\d\\+'))\n"
@@ -73,12 +53,10 @@ SYSTEM_PROMPT = (
     "   :keepjumps /timeout_seconds/  \" validation step\n"
 )
 
+
 # -------------------- Env --------------------
 load_dotenv()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", DEFAULT_MODEL)
-#DEBUG
-OPENAI_MODEL = "gpt-4.1"
-
 # -------------------- Small helpers --------------------
 def _unix_socket_exists(path: str) -> bool:
     try:
@@ -87,7 +65,7 @@ def _unix_socket_exists(path: str) -> bool:
         return False
 
 
-def _trim_messages_to_budget(messages: List[Dict[str, Any]], max_input_tokens: int = 6000) -> List[Dict[str, Any]]:
+def _trim_messages_to_budget(messages: List[Dict[str, Any]], max_input_tokens: int = 2000) -> List[Dict[str, Any]]:
     """
     Keep most recent content while staying under a rough token budget.
     - Always keep ALL system messages (untrimmed, at the front).
@@ -181,17 +159,27 @@ def _trim_messages_to_budget(messages: List[Dict[str, Any]], max_input_tokens: i
 
 def _content_items_to_text_blocks(content_list: List[Any]) -> List[str]:
     """
-    Normalize MCP tool content (which can be a mix of text items/objects) into a few strings.
-    We keep it simple for Vim: join 'text' items; stringify others.
+    Normalize MCP tool content into safe, short text blocks.
+    Hard truncate individual blocks to avoid blowing up the token budget.
     """
+
     out: List[str] = []
+
     for item in content_list or []:
+        # Extract text
         if isinstance(item, dict) and item.get("type") == "text":
-            out.append(str(item.get("text", ""))[:8000])
+            text = str(item.get("text", ""))
         elif hasattr(item, "type") and getattr(item, "type") == "text":
-            out.append(str(getattr(item, "text", ""))[:8000])
+            text = str(getattr(item, "text", ""))
         else:
-            out.append(str(item)[:4000])
+            text = str(item)
+
+        # Truncate + add marker
+        if len(text) > MAX_BLOCK:
+            text = text[:MAX_BLOCK] + " …[truncated]"
+
+        out.append(text)
+
     return out or ["(empty tool result)"]
 
 # -------------------- Client --------------------
@@ -239,12 +227,11 @@ class NeovimAgentClient:
     async def _current_file(self) -> Optional[str]:
         """Return absolute path of the currently active buffer, or None."""
         try:
-            ##res = await self.session.call_tool("vim_command", {"command": ":echo expand('%:p')"})
-            ##blocks = _content_items_to_text_blocks(res.content)
+            res = await self.session.call_tool("vim_command", {"command": ":echo expand('%:p')"})
+            blocks = _content_items_to_text_blocks(res.content)
             # First block should contain the echo result
-            ##val = (blocks[0] if blocks else "").strip()
-            ##return val or None
-            return None
+            val = (blocks[0] if blocks else "").strip()
+            return val or None
         except Exception:
             return None
 
@@ -253,9 +240,10 @@ class NeovimAgentClient:
 
     # ---- LLM orchestration ----
     def _mcp_tools_to_openai(self, tools_resp) -> List[Dict[str, Any]]:
-        """Map MCP tool descriptors to OpenAI tool schema."""
-        out: List[Dict[str, Any]] = []
+        out = []
         for t in (tools_resp.tools or []):
+            if t.name == "vim_buffer":
+                continue  # <-- skip it completely
             out.append({
                 "type": "function",
                 "function": {
@@ -286,7 +274,7 @@ class NeovimAgentClient:
         final_text: List[str] = []
 
         for step in range(MAX_TOOL_STEPS):
-            messages = _trim_messages_to_budget(messages, max_input_tokens=6000)
+            messages = _trim_messages_to_budget(messages, max_input_tokens=2000)
 
             completion = self.openai.chat.completions.create(
                 model=model,
@@ -355,6 +343,14 @@ class NeovimAgentClient:
                     result = await self.session.call_tool(name, args)
                     blocks = _content_items_to_text_blocks(result.content)
                     tool_reply = json.dumps(blocks, ensure_ascii=False)
+
+                    # --- NEW DEBUG LOG: pretty-print tool output ---
+                    if DEBUG:
+                        print(f"[DEBUG] Tool '{name}' output blocks:")
+                        for b in blocks:
+                            print("    ", b)
+                        print("-" * 60)
+
                 except Exception as e:
                     tool_reply = json.dumps([f"Tool error: {e}"], ensure_ascii=False)
 
@@ -369,7 +365,7 @@ class NeovimAgentClient:
 # -------------------- CLI --------------------
 async def main():
     socket = os.getenv("NVIM_SOCKET_PATH", DEFAULT_SOCKET)
-    allow_shell = os.getenv("ALLOW_SHELL_COMMANDS", "false")
+    allow_shell = os.getenv("ALLOW_SHELL_COMMANDS", "true")
 
     user_query = input("Neovim agent query> ").strip()
     if not user_query:
