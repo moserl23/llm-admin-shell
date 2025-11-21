@@ -34,10 +34,13 @@ class Patch(BaseModel):
     edits: List[Edit]
 
 @tool
-def finalize_patch(patch: Patch, explaination: str) -> str:
+def finalize_patch(patch: Patch, explanation: str) -> str:
     """
-    Submit the final patch and explaination.
+    Submit the final patch and explanation.
     """
+
+    print("patch:", patch)
+    print("explaination:", explanation)
 
 
     global FILE_CACHE
@@ -96,7 +99,7 @@ def finalize_patch(patch: Patch, explaination: str) -> str:
     )
 
     # You can return the updated content or just "OK"
-    return explaination
+    return explanation
 
 
 @tool
@@ -224,7 +227,6 @@ def read_file() -> str:
     """
     Read the entire file content with numbered lines.
     """
-    ###DEBUG
     global FILE_CACHE
     if FILE_CACHE is None:
         return ""
@@ -236,7 +238,7 @@ tools_big_file = [read_file_slice, search_regex_window, search_text_window, fina
 all_tools = tools_big_file + tools_small_file
 
 # ---------- LLM client ----------
-base_model = ChatOpenAI(model="gpt-4.1", api_key=API_KEY, temperature=0.0)
+base_model = ChatOpenAI(model="gpt-4.1", api_key=API_KEY, temperature=0.3)
 
 
 # ---------- Nodes ----------
@@ -253,7 +255,8 @@ def decision_node(state: AgentState) -> AgentState:
         "- As soon as ANY tool returns the relevant line(s) with line numbers, STOP inspecting.\n"
         "- Never re-read a line already seen in any tool output.\n"
         "- Never add logic, templates, comments, or new structure. Only edit existing lines.\n"
-        "- For read-only or summary requests, DO NOT modify the file (Patch(edits=[])).\n\n"
+        "- For read-only or summary requests, DO NOT modify the file (Patch(edits=[])).\n"
+        "- - Never invent passwords, credentials, or configuration values unless the exact values are explicitly provided.\n\n"
 
         "=== EXAMPLE 1 — SIMPLE EDIT ===\n"
         "User request: 'Change port 5432 to 6432'.\n"
@@ -288,7 +291,7 @@ def decision_node(state: AgentState) -> AgentState:
         "CORRECT BEHAVIOR:\n"
         "→ STOP immediately.\n"
         "→ NO edits (Patch(edits=[])).\n"
-        "→ Summary goes into explaination.\n\n"
+        "→ Summary goes into explanation.\n\n"
 
         "=== EXAMPLE 4 — MULTI-LINE EDIT ===\n"
         "User request: 'Change host to 0.0.0.0 and port to 6543'.\n"
@@ -304,11 +307,11 @@ def decision_node(state: AgentState) -> AgentState:
         "PATCH RULES:\n"
         "- Use the Edit schema (op, start_line, end_line if needed, content if needed).\n"
         "- Minimal edits only. Do not repeat unchanged lines.\n"
-        "- If no change is required or allowed, use Patch(edits=[]).\n\n"
+        "- If no change is required or allowed, use Patch(edits=[]).\n"
 
         "FINALIZATION:\n"
-        "Always finalize with: finalize_patch(patch=Patch(...), explaination=...).\n"
-        "explaination must be a short plain-text sentence describing what changed or, "
+        "Always finalize with: finalize_patch(patch=Patch(...), explanation=...).\n"
+        "explanation must be a short plain-text sentence describing what changed or, "
         "for summary requests, summarizing the relevant lines."
     )
 
@@ -350,7 +353,7 @@ def decision_node(state: AgentState) -> AgentState:
         "- If conditions do not match, or no change is needed, return Patch(edits=[]).\n\n"
 
         "FINALIZATION:\n"
-        "Always finish with: finalize_patch(patch=Patch(...), explaination=...).\n"
+        "Always finish with: finalize_patch(patch=Patch(...), explanation=...).\n"
         "The explanation must briefly describe why the change was applied or skipped."
     )    
     '''
@@ -366,7 +369,7 @@ def decision_node(state: AgentState) -> AgentState:
         "PATCH:\n"
         "- Use the Edit schema (op, start_line, end_line if needed, content if needed).\n"
         "- Only change the requested values (minimal edits, no unchanged lines).\n"
-        "- Always finish by calling finalize_patch(patch=Patch(...), explaination=<brief-explaination>). "
+        "- Always finish by calling finalize_patch(patch=Patch(...), explanation=<brief-explanation>). "
         "If nothing needs to be changed, use Patch(edits=[])."
     )
     '''
@@ -398,7 +401,7 @@ def decision_node(state: AgentState) -> AgentState:
         "- If the condition is FALSE, or no edit is needed, or you are uncertain, "
         "you MUST call finalize_patch with Patch(edits=[]).\n\n"
 
-        "Always finish by calling finalize_patch(patch=Patch(...), explaination=...). "
+        "Always finish by calling finalize_patch(patch=Patch(...), explanation=...). "
         "The explanation must briefly state why the change was or was not applied."
     )
     '''
@@ -471,14 +474,14 @@ def route_decision(state: AgentState) -> str:
     # If the LLM asked to call a tool, go to the ToolNode
     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
         return "__tool__"
-    return "__end__"
+    return "__decision__"
 
 graph.add_conditional_edges(
     "decision_node",
     route_decision,
     path_map={
         "__tool__": "tool_node",
-        "__end__": END,  # special label to end the graph
+        "__decision__": "decision_node",
     },
 )
 
@@ -490,14 +493,14 @@ def route_after_tool(state: AgentState) -> str:
         return "__end__"
 
     # Otherwise, go back to the decision node
-    return "__continue__"
+    return "__decision__"
 
 graph.add_conditional_edges(
     "tool_node",
     route_after_tool,
     path_map={
         "__end__": END,
-        "__continue__": "decision_node",
+        "__decision__": "decision_node",
     },
 )
 
@@ -546,7 +549,7 @@ def run_file_edit_agent(query: str, file_content: str) -> dict:
 
     return {
         "updated_file": unnumbered_content,
-        "explaination": explanation,
+        "explanation": explanation,
     }
 
 

@@ -1,1 +1,1 @@
-The Internal Server Error was caused by a database access issue for the configured Nextcloud user. I restored the correct privileges for 'correct_user' on the 'nextclouddb' database. The site now responds with HTTP 302 (redirect), confirming it is healthy and the problem is resolved.
+Validation shows that Apache2 is active and a direct HTTPS request to https://nextcloud.local/ returns HTTP 200 OK. This means Nextcloud is responding correctly and the issue is resolved—no further action is needed.

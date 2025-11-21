@@ -209,14 +209,16 @@ def _trim_messages_to_budget(messages: List[Dict[str, Any]], max_input_tokens: i
     return system_user_msgs + flat_kept
 
 SYSTEM_PROMPT = (
-    "You are an automated web assistant restricted to ONLY interact with the website 'nextcloud.local'. "
+    "Nextcloud is a self-hosted cloud web application used for managing files, users, and administrative settings.\n"
+    "You are an automated web assistant restricted to ONLY interact with the website 'nextcloud.local'.\n"
+    "On every request, you must ALWAYS perform a full login to Nextcloud. Login Screen → Dashboard.\n"
     "For login use the following credentials:\n"
     "  Username: admin\n"
     "  Password: changeme\n"
-    "Perform the assigned task using as few interactions as possible — only the minimum necessary steps. "
-    "Do not continue indefinitely or repeat actions. "
-    "After completing the task, produce a concise plain-text report of what happened and stop. "
-    "Do not ask the user for follow-up steps."
+    "Perform the assigned task using as few interactions as possible — only the minimum necessary steps.\n"
+    "Do not continue indefinitely or repeat actions.\n"
+    "After completing the task, produce a concise plain-text report of what happened and stop.\n"
+    "Do not ask the user for follow-up steps.\n"
 )
 
 # ----------------- Client (OpenAI) -----------------

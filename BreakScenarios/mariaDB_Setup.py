@@ -5,7 +5,7 @@ from utils import ShellSession
 
 def config(session):
     # BREAK: edit config.php directly (don’t use occ here)
-    session.run_cmd(r'''sudo sed -i.bak -E "s/('dbuser'[[:space:]]*=>[[:space:]]*)'[^']*',/\1'wrong_user',/" /var/www/nextcloud/config/config.php''')
+    session.run_cmd(r'''sudo sed -i.bak -E "s/('dbuser'[[:space:]]*=>[[:space:]]*)'[^']*',/\1'nc_user2',/" /var/www/nextcloud/config/config.php''')
     session.run_cmd(r'''sudo sed -i.bak -E "s/('dbpassword'[[:space:]]*=>[[:space:]]*)'[^']*',/\1'wrong_password',/" /var/www/nextcloud/config/config.php''')
 
     # No need to reload apache for config.php changes, but harmless if you want:
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
     config(session)  # call this to break
-    #fix(session)       # call this to fix
+    fix(session)       # call this to fix
     session.close()
 
 

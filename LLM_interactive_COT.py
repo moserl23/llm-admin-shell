@@ -193,7 +193,7 @@ if __name__ == "__main__":
     MODEL_ADMIN_AGENT = "gpt-4.1"
     NUMBER_OF_INTERACTIONS = 30
     TEMPERATURE = 0
-    ISSUE = "Nextcloud is responding with Internal Server Error. Fix the problem!"
+    ISSUE = "Nextcloud is not responding correctly. Fix the problem!"
 
     # CoT
     CHAIN_OF_THOUGHTS_PLANNING = True

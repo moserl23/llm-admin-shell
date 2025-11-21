@@ -45,8 +45,8 @@ class ShellSession:
 
     def grep_vim_debug(self, pattern: str, radius: int = 3):
         # clear any pending hit-enter and leave modes
-        #self.child.send("\x1b")   # ESC
-        #self.child.send("\r")     # ENTER
+        self.child.send("\x1b")   # ESC
+        self.child.send("\r")     # ENTER
 
         
         
@@ -152,7 +152,9 @@ class ShellSession:
         # Clear any pending prompt / mode
         self.child.send("\x1b"); self.child.send("\r")
         # Deactivate interactive features and print content of file
-        self.child.send(":set nomore nonu norelativenumber\r")
+        self.child.send(
+            ":set nomore nonu norelativenumber nowrap textwidth=0 wrapmargin=0 columns=5000\r"
+        )
         #self.child.send(":echo '<<<BEGIN>>>' | silent! 1,$print | echo '<<<END>>>'\r")
         self.child.send(
         ":echo '<<<BEGIN>>>' | "
@@ -250,6 +252,9 @@ class ShellSession:
         Execute a shell command via the active pexpect child process, 
         wait for the sentinel prompt, and return the cleaned output.
         '''
+        if not is_safe_command(cmd):
+            return f"Resfuing to run potentially dangerous command: {cmd!r}"
+
         self.child.sendline(cmd)
         try:
             self.child.expect(self.sentinel, timeout=25)
