@@ -16,15 +16,40 @@ from utils import examples_content, cheatsheet_content, ShellSession, init_env_a
 import subprocess
 import time
 import random
-import math
-import shlex
-import re
 
 # additional tool code
 from new_vim_agent import run_file_edit_agent
 
 # global variables
 global_session: ShellSession | None = None
+
+
+# ---------- Hyperparameters / Config ----------
+class AgentConfig:
+    # Summarization behavior
+    SUMMARY_THRESHOLD = 25          # summarize after this many new messages
+    SUMMARY_MAX_SENTENCES = 3       # enforce concise summaries
+
+    # Chat context window
+    MAX_HISTORY_WINDOW = 12         # number of recent messages passed to main model
+
+    # Tool output truncation limits
+    READ_FILE_MAX_CHARS = 4000
+    NEXT_COMMAND_MAX_CHARS = 400
+
+    # LLM configuration
+    MAIN_MODEL_NAME = "gpt-4o"
+    MAIN_MODEL_TEMPERATURE = 0.1
+
+    SUMMARY_MODEL_NAME = "gpt-4o-mini"
+    SUMMARY_MODEL_TEMPERATURE = 0.0
+
+    # LangGraph recursion
+    RECURSION_LIMIT = 200
+
+    # NEW: human-like interaction delays
+    DELAY_ACTIVE = False           # <-- toggle delay simulation ON/OFF
+
 
 # ---------- State Class ----------
 class AgentState(TypedDict):
@@ -66,13 +91,17 @@ def cleanup_session() -> None:
     global_session = None
 
 def human_delay_for_cmd(cmd: str) -> None:
-    return 
     """
     Simulate a more realistic human pause before typing/running a command.
     Humans don't react instantly — they read, think, hesitate, re-read,
     and only then type. Delay scales with command length and includes
     extra human-like randomness.
     """
+
+    # Skip delay if disabled
+    if not AgentConfig.DELAY_ACTIVE:
+        return
+
     base = 1.2                     # humans take longer before acting
     per_char = 0.03                # ~30ms per character typed
     cognitive_delay = random.uniform(0.5, 2.0)  # thinking/hesitation
@@ -87,13 +116,15 @@ def human_delay_for_cmd(cmd: str) -> None:
     time.sleep(delay)
 
 
-def human_delay_for_vim() -> None:
-    return 
+def human_delay_for_vim() -> None: 
     """
     Simulate a human preparing for a Vim editing session.
     People read the file, think about changes, scroll, hesitate,
     and often take significantly longer than simple command execution.
     """
+    # Skip delay if disabled
+    if not AgentConfig.DELAY_ACTIVE:
+        return
     mean = 6.0                    # typical human pauses longer before editing
     std_dev = 3.0                 # very inconsistent
     planning_delay = random.uniform(1.0, 4.0)  # extra time to read/understand
@@ -107,7 +138,7 @@ def human_delay_for_vim() -> None:
 
 def build_model_messages(
     state_messages: Sequence[BaseMessage],
-    max_history: int = 25,
+    max_history: int = None,
 ) -> List[BaseMessage]:
     all_msgs = list(state_messages)
 
@@ -155,7 +186,7 @@ def build_model_messages(
     return msgs
 
 
-def maybe_summarize_history(state: AgentState, threshold: int = 25) -> dict:
+def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
     """
     Optionally update the running summary.
 
@@ -210,7 +241,8 @@ def maybe_summarize_history(state: AgentState, threshold: int = 25) -> dict:
                 content=(
                     "Here is the existing summary of earlier steps:\n"
                     f"{old_summary}\n\n"
-                    "Update this summary based on the following new turns:\n"
+                    "Create a concise updated summary that compresses both the previous summary "
+                    "and the following new steps into a single short, unified summary:\n"
                     f"{transcript}"
                 )
             )
@@ -328,7 +360,7 @@ def read_file(filename: str) -> str:
     if raw is None or raw.strip() == "":
         return f"[ERROR: Cannot read file '{filename}' or file is empty]"
 
-    MAX_CHARS = 4000
+    MAX_CHARS = AgentConfig.READ_FILE_MAX_CHARS
 
     cleaned = raw.rstrip("\n")
     if len(cleaned) > MAX_CHARS:
@@ -383,7 +415,7 @@ def next_command(cmd: str) -> str:
     # --- Human-like delay ---
     human_delay_for_cmd(cmd)
 
-    MAX_CHARS = 400
+    MAX_CHARS = AgentConfig.NEXT_COMMAND_MAX_CHARS
     session = get_session()
     raw_result = session.run_cmd(cmd) or ""
 
@@ -523,12 +555,12 @@ tools = [next_command, use_browser, read_file, use_vim, terminate]
 
 # ---------- LLM client ----------
 summary_model = ChatOpenAI(
-    model="gpt-4o-mini",  # cheap summarizer
+    model=AgentConfig.SUMMARY_MODEL_NAME,  # cheap summarizer
     api_key=API_KEY,
-    temperature=0.0,
+    temperature=AgentConfig.SUMMARY_MODEL_TEMPERATURE,
 )
 
-model = ChatOpenAI(model="gpt-4o", api_key=API_KEY, temperature=0.1).bind_tools(tools=tools)
+model = ChatOpenAI(model=AgentConfig.MAIN_MODEL_NAME, api_key=API_KEY, temperature=AgentConfig.MAIN_MODEL_TEMPERATURE).bind_tools(tools=tools)
     #tool_choice={"type": "function", "function": {"name": "it_is_enough"}}  # <-- correct shape
 
 
@@ -536,7 +568,7 @@ model = ChatOpenAI(model="gpt-4o", api_key=API_KEY, temperature=0.1).bind_tools(
 def decision_node(state: AgentState) -> AgentState:
 
     # 1) Maybe update the running summary
-    summary_updates = maybe_summarize_history(state)
+    summary_updates = maybe_summarize_history(state, AgentConfig.SUMMARY_THRESHOLD)
     history_summary = summary_updates.get("history_summary", state.get("history_summary"))
     summarized_upto = summary_updates.get("summarized_upto", state.get("summarized_upto", 0))
 
@@ -559,7 +591,7 @@ def decision_node(state: AgentState) -> AgentState:
     system_prompt = "".join(system_prompt_parts)
 
     # 3) Build recent history window (smaller)
-    chat_history = build_model_messages(state["messages"], max_history=12)
+    chat_history = build_model_messages(state["messages"], max_history=AgentConfig.MAX_HISTORY_WINDOW)
 
     # 4) Assemble messages for main model
     model_messages: List[BaseMessage] = [SystemMessage(content=system_prompt)]
@@ -647,7 +679,7 @@ if __name__ == "__main__":
                 "history_summary": None,
                 "summarized_upto": 0,
             },
-            config={"recursion_limit": 200},
+            config={"recursion_limit": AgentConfig.RECURSION_LIMIT},
         )
 
     finally:

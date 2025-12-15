@@ -574,20 +574,22 @@ if __name__ == "__main__":
     # Ask the user for an editing query
     editing_query = input("Query: ")
 
+    # Decide file size mode based on character length
+    file_size_mode = "big" if len(raw_content) > 4000 else "small"
+
     # Invoke the graph
     result = app.invoke(
         {
             "messages": [
                 HumanMessage(content=editing_query)
             ],
-            "file_size_mode": "big",
+            "file_size_mode": file_size_mode,
         },
         config={"recursion_limit": 20},
     )
 
     
     # Message History
-    
     print("Output:")
     for message in result["messages"]:
         if isinstance(message, tuple):
