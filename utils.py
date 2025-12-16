@@ -232,7 +232,7 @@ class ShellSession:
         in the pexpect session.
         '''
         # connecting to server
-        cmd = "ssh server"
+        cmd = "ssh final_arena_server" #"ssh server"
         self.child.sendline(cmd)
         self.child.expect(r"[$#] ")
         self.child.expect(r"[$#] ")
@@ -268,6 +268,15 @@ class ShellSession:
         if parts and parts[0].strip() == cmd.strip():
             parts = parts[1:]
         return "\n".join(parts).strip()
+
+    def deactivate_history(self):
+        '''
+        Deactivate and delete command history and tracking for current shell
+        '''
+        self.run_cmd("history -c")
+        self.run_cmd("export HISTFILE=/dev/null")
+        self.run_cmd("unset HISTFILE")
+        self.run_cmd("set +o history")
 
 
     def close(self):
@@ -323,12 +332,12 @@ def read_new_logs(session):
     and write them to corresponding files in the LOGS/ directory.
     '''
     logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
-    with open("LOGS/LLM_nextcloud.log", "w", encoding="utf-8") as f:
+    with open("BreakScenarios/LOGS_Result/LLM_nextcloud.log", "w", encoding="utf-8") as f: # change
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
-    with open("LOGS/LLM_audit.log", "w", encoding="utf-8") as f:
+    with open("BreakScenarios/LOGS_Result/LLM_audit.log", "w", encoding="utf-8") as f: # change
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_syslog+1)) /var/log/syslog')
-    with open("LOGS/LLM_syslog.log", "w", encoding="utf-8") as f:
+    with open("BreakScenarios/LOGS_Result/LLM_syslog.log", "w", encoding="utf-8") as f: # change
         f.write(logs)
 

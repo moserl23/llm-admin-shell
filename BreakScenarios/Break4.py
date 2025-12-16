@@ -4,13 +4,13 @@ from utils import ShellSession
 
 
 LIVE_FILE = "/var/www/nextcloud/apps/files/lib/Controller/ViewController.php"
-BACKUP_FILE = "/var/backups/nextcloud/apps/files/lib/Controller/ViewController.php"
+BACKUP_FILE = "/var/backups/nextcloud/www/apps/files/lib/Controller/ViewController.php"
 
 
 def config(session):
     """
     BREAK:
-    Delete a post-login critical JS asset. Login works,
+    Delete a post-login critical asset. Login works,
     but the Files app breaks after login (JS 404).
     """
     # Remove the JS file
@@ -18,9 +18,6 @@ def config(session):
 
     # Reload Apache to ensure cache/template invalidation
     session.run_cmd("sudo systemctl reload apache2 || true")
-
-    # Optional: show last lines of Apache error to hint the break
-    session.run_cmd("sudo tail -n 20 /var/log/apache2/error.log || true")
 
 
 def fix(session):
@@ -52,8 +49,9 @@ def fix(session):
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
+    session.deactivate_history()
 
-    config(session)  # to break
+    #config(session)  # to break
     fix(session)     # to fix
 
     session.close()
