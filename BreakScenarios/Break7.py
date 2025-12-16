@@ -40,6 +40,28 @@ def fix(session):
     session.run_cmd("sudo systemctl reload apache2")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Problem: Nextcloud doesnot look right!
+
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()

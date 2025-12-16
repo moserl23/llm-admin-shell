@@ -46,12 +46,39 @@ def fix(session):
     session.run_cmd("sudo -u www-data php /var/www/nextcloud/occ status || true")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Files section of nextcloud shows a problem!
+
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
     session.deactivate_history()
 
-    #config(session)  # to break
-    fix(session)     # to fix
+    config(session)  # to break
+    #fix(session)     # to fix
 
     session.close()

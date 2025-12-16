@@ -20,12 +20,37 @@ EOF""")
     session.run_cmd("sudo systemctl reload apache2")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Problem: Something is wrong with nextcloud
+
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
     session.deactivate_history()
     
-    #config(session)  # call this to break
-    fix(session)       # call this to fix
+    config(session)  # call this to break
+    #fix(session)       # call this to fix
     
     session.close()

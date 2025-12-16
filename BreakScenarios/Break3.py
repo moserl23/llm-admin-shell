@@ -16,6 +16,28 @@ def fix(session):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Deleting and uploading a file in nextcloud does not work.
+
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()

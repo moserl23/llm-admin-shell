@@ -325,6 +325,7 @@ def init_env_and_log_offsets(session):
     session.run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
     session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
     session.run_cmd('POS_syslog=$(stat -c %s /var/log/syslog)')
+    session.run_cmd('POS_authlog=$(stat -c %s /var/log/auth.log)')
 
 def read_new_logs(session):
     '''
@@ -339,5 +340,8 @@ def read_new_logs(session):
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_syslog+1)) /var/log/syslog')
     with open("BreakScenarios/LOGS_Result/LLM_syslog.log", "w", encoding="utf-8") as f: # change
+        f.write(logs)
+    logs = session.run_cmd('tail -c +$((POS_authlog+1)) /var/log/auth.log')
+    with open("BreakScenarios/LOGS_Result/LLM_auth.log", "w", encoding="utf-8") as f: # change
         f.write(logs)
 

@@ -39,6 +39,33 @@ def fix(session):
     
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Problem: Internal Server Error 500
+
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()

@@ -1,0 +1,9 @@
+
+Nextcloud
+
+--> LAMP-Stack: Linux, Apache, Maria-Database, Php
+
+Log-Location:
+- ErrorLog /var/log/apache2/nextcloud.local-error.log
+- CustomLog /var/log/apache2/nextcloud.local-access.log 
+

@@ -73,6 +73,39 @@ def fix(session):
     session.run_cmd(r'sudo -u www-data php /var/www/nextcloud/occ status')
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Problem: Login is not possible.
+
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
