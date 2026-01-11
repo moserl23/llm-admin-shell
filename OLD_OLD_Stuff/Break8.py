@@ -48,14 +48,15 @@ def fix(session):
 
 
 
-# Problem: Wrong file URLs are not correctly handled by Nextcloud.
+
+# Unexpected behaviour when handling requests for missing resources.
 
 if __name__ == "__main__":
     session = ShellSession()
     session.connect_root_setSentinel()
     session.deactivate_history()
 
-    #config(session)
-    fix(session)    
+    config(session)
+    #fix(session)    
 
     session.close()

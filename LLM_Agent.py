@@ -8,17 +8,18 @@ from langchain_openai import ChatOpenAI
 
 # Typing
 from typing import TypedDict, Optional, Annotated, Sequence, List
-from pydantic import BaseModel
 
 # configuration and utilities and standard lbraries
-from config import API_KEY
+#from config import API_KEY
+from dotenv import load_dotenv
+load_dotenv()
 from utils import examples_content, cheatsheet_content, ShellSession, init_env_and_log_offsets, read_new_logs
 import subprocess
 import time
 import random
 
 # additional tool code
-from new_vim_agent import run_file_edit_agent
+from vim_agent import run_file_edit_agent
 
 # global variables
 global_session: ShellSession | None = None
@@ -26,29 +27,52 @@ global_session: ShellSession | None = None
 
 # ---------- Hyperparameters / Config ----------
 class AgentConfig:
-    # Summarization behavior
-    SUMMARY_THRESHOLD = 25          # summarize after this many new messages
-    SUMMARY_MAX_SENTENCES = 3       # enforce concise summaries
 
+    # Metrik Prio 1: Least Number of Failures / Least Number of Recursions
+
+    # problem description
+    problem_prompt = "Files section of nextcloud shows a problem!"    
+
+    # Summarization behavior
+    SUMMARY_THRESHOLD = 36          # summarize after this many new messages
     # Chat context window
-    MAX_HISTORY_WINDOW = 12         # number of recent messages passed to main model
+    MAX_HISTORY_WINDOW = SUMMARY_THRESHOLD         # number of recent messages passed to main model
+    # [6, 12, 24, 36, 48, 60]
+    # Default: 24
+    # Chosen: 36
 
     # Tool output truncation limits
-    READ_FILE_MAX_CHARS = 4000
-    NEXT_COMMAND_MAX_CHARS = 400
+    READ_FILE_MAX_CHARS = 4000      # Maximum number of characters returned by read_file (excess is truncated)
+    # Default: 4000
 
-    # LLM configuration
-    MAIN_MODEL_NAME = "gpt-4o"
-    MAIN_MODEL_TEMPERATURE = 0.1
+    NEXT_COMMAND_MAX_CHARS = 500    # Maximum number of characters returned from a single next_command execution
+    # [300, 500, 800]
+    # Default: 500
+    # Chosen: 500
 
-    SUMMARY_MODEL_NAME = "gpt-4o-mini"
-    SUMMARY_MODEL_TEMPERATURE = 0.0
+    # Human-like interaction delays
+    DELAY_ACTIVE = True           # <-- toggle delay simulation ON/OFF; only necessary for actual logging
+
+    # In Context Learning
+    ENABLE_IN_CONTEXT_EXAMPLES = True
+    # [True, False]
+    # Default: True
+    # Chosen: True
 
     # LangGraph recursion
-    RECURSION_LIMIT = 200
+    RECURSION_LIMIT = 300
 
-    # NEW: human-like interaction delays
-    DELAY_ACTIVE = False           # <-- toggle delay simulation ON/OFF
+    # LLM configuration
+    MAIN_MODEL_NAME = "gpt-4.1"
+    # Default: gpt-4.1
+    MAIN_MODEL_TEMPERATURE = 0.1
+    # [0.1, 0.3]
+    # Default: 0.1
+    # Chosen: 0.1
+
+    SUMMARY_MODEL_NAME = "gpt-4.1-mini"
+    SUMMARY_MODEL_TEMPERATURE = 0.0
+
 
 
 # ---------- State Class ----------
@@ -56,10 +80,12 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     history_summary: Optional[str]
     summarized_upto: int  # how many messages are already summarized
+    decision_steps: int
 
 
 # ---------- Helpers ----------
 def get_session() -> ShellSession:
+    """Return the singleton root ShellSession, creating and initializing it on first use."""
     global global_session
     if global_session is None:
         global_session = ShellSession()
@@ -92,54 +118,90 @@ def cleanup_session() -> None:
 
 def human_delay_for_cmd(cmd: str) -> None:
     """
-    Simulate a more realistic human pause before typing/running a command.
-    Humans don't react instantly — they read, think, hesitate, re-read,
-    and only then type. Delay scales with command length and includes
-    extra human-like randomness.
+    Simulate a realistic human pause before typing/running a command.
+    Target range: ~5–10 seconds.
     """
 
-    # Skip delay if disabled
     if not AgentConfig.DELAY_ACTIVE:
         return
 
-    base = 1.2                     # humans take longer before acting
-    per_char = 0.03                # ~30ms per character typed
-    cognitive_delay = random.uniform(0.5, 2.0)  # thinking/hesitation
-    jitter = random.gauss(0, 0.7)  # natural inconsistency
+    base = 3.5                     # humans pause before acting
+    per_char = 0.06                # ~60ms per character typed
+    cognitive_delay = random.uniform(1.5, 4.0)  # thinking / rereading
+    jitter = random.gauss(0, 0.8)  # natural inconsistency
 
     delay = base + per_char * len(cmd) + cognitive_delay + jitter
 
-    # clamp into a slower, believable human range
-    delay = max(1.0, min(delay, 10.0))
+    # clamp into slow, realistic range
+    delay = max(5, min(delay, 10.0))
 
     print(f"[human_delay_for_cmd] pausing for {delay:.2f}s (thinking/typing)…")
     time.sleep(delay)
 
 
-def human_delay_for_vim() -> None: 
+def human_delay_for_vim() -> None:
     """
     Simulate a human preparing for a Vim editing session.
-    People read the file, think about changes, scroll, hesitate,
-    and often take significantly longer than simple command execution.
+    Target range: ~8–20 seconds.
     """
-    # Skip delay if disabled
+
     if not AgentConfig.DELAY_ACTIVE:
         return
-    mean = 6.0                    # typical human pauses longer before editing
-    std_dev = 3.0                 # very inconsistent
-    planning_delay = random.uniform(1.0, 4.0)  # extra time to read/understand
+
+    mean = 10.0                   # people take time before editing
+    std_dev = 4.0                 # very inconsistent
+    planning_delay = random.uniform(2.0, 6.0)  # reading & planning
+
     delay = random.gauss(mean, std_dev) + planning_delay
 
     # realistic editing-prep delay range
-    delay = max(4.0, min(delay, 20.0))
+    delay = max(8.0, min(delay, 20.0))
 
     print(f"[human_delay_for_vim] pausing for {delay:.2f}s (reading/editing)…")
     time.sleep(delay)
+
+def invoke_with_retry(model, model_messages, max_retries: int = 3):
+    """
+    Retry model.invoke on transient rate-limit errors (TPM/RPM).
+    Uses exponential backoff with jitter.
+    """
+    base_delay = 1.5  # seconds
+    for attempt in range(max_retries + 1):
+        try:
+            return model.invoke(model_messages)
+
+        except Exception as e:
+            msg = str(e).lower()
+
+            # Detect rate limit / 429. (Works for both OpenAI + wrapped LangChain errors.)
+            is_rate_limit = (
+                "rate limit" in msg
+                or "429" in msg
+                or "tpm" in msg
+                or "tokens per min" in msg
+                or "rate_limit_exceeded" in msg
+            )
+            if not is_rate_limit:
+                raise  # not a transient rate limit
+
+            if attempt >= max_retries:
+                raise  # give up
+
+            # Exponential backoff + jitter
+            delay = base_delay * (2 ** attempt)
+            delay = min(delay, 15.0)  # cap so it doesn't blow up
+            delay += random.uniform(0.0, 0.75)  # jitter
+
+            print(f"[invoke_with_retry] Rate-limited (attempt {attempt+1}/{max_retries}). Sleeping {delay:.2f}s…")
+            time.sleep(delay)
+
+
 
 def build_model_messages(
     state_messages: Sequence[BaseMessage],
     max_history: int = None,
 ) -> List[BaseMessage]:
+    """Build a clean, bounded chat history for the model, preserving context and valid tool results."""
     all_msgs = list(state_messages)
 
     # 1) Find the first HumanMessage (root user task)
@@ -199,7 +261,7 @@ def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
 
     # Only summarize if there are enough *new* messages
     new_count = len(messages) - summarized_upto
-    if new_count < threshold:
+    if threshold is not None and new_count < threshold:
         return {}
 
     # Take only the new chunk
@@ -210,7 +272,6 @@ def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
     for m in new_chunk:
         if isinstance(m, HumanMessage):
             role = "USER"
-            continue # not needed
         elif isinstance(m, AIMessage):
             role = "ASSISTANT"
         elif isinstance(m, ToolMessage):
@@ -224,13 +285,8 @@ def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
     prompt: List[BaseMessage] = [
         SystemMessage(
             content=(
-                "Summarize the recent web-administration activity concisely.\n"
-                "Focus only on what the AI agent must remember in order to continue the task correctly:\n"
-                "- commands that were executed\n"
-                "- files that were inspected or edited\n"
-                "- services that were checked or changed\n"
-                "- important errors, warnings, or system states\n\n"
-                "Keep it super super short, factual, and useful for future reasoning."
+                "You are a summarization module for a web-administration agent.\n"
+                "Compress this web-administrator troubleshooting activity into a minimal working state that preserves only what is required to continue.\n"
             )
         )
     ]
@@ -239,10 +295,12 @@ def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
         prompt.append(
             HumanMessage(
                 content=(
-                    "Here is the existing summary of earlier steps:\n"
+                    "Update the running summary.\n"
+                    "Merge the PREVIOUS SUMMARY with the NEW ACTIVITY into ONE summary.\n"
+                    "This must be a replacement (do not append) and should not significantly increase in length.\n"
+                    "PREVIOUS SUMMARY:\n"
                     f"{old_summary}\n\n"
-                    "Create a concise updated summary that compresses both the previous summary "
-                    "and the following new steps into a single short, unified summary:\n"
+                    "NEW ACTIVITY:\n"
                     f"{transcript}"
                 )
             )
@@ -251,17 +309,19 @@ def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
         prompt.append(
             HumanMessage(
                 content=(
-                    "Create a concise summary of the following:\n"
+                    "Create an initial running summary from the activity below.\n"
+                    "ACTIVITY:\n"
                     f"{transcript}"
                 )
             )
         )
 
+
     summary_msg = summary_model.invoke(prompt)
     new_summary = summary_msg.content.strip()
 
-    ### DEBUG
-    print("Debugging from maybe_summarize:")
+    ### Print Summary
+    print("Current Summary:")
     print("summarized history:", new_summary)
     print("summarized_upto:", len(messages))
 
@@ -275,85 +335,28 @@ def maybe_summarize_history(state: AgentState, threshold: int = None) -> dict:
 
 
 # ---------- Tools ----------
-'''
-@tool
-def read_file(filename: str, search: str) -> str:
-    """
-    Read specific parts of a file based on a regex or search phrase.
-
-    This is the preferred way to inspect file content before using use_vim.
-    It does NOT return the whole file, only lines matching the search query.
-
-    Args:
-        filename (str): Path to the file.
-        search (str): Regex or plain text (case-insensitive).
-                      If empty, a short head/tail preview is shown.
-
-    Returns:
-        str: Matching lines with line numbers (or preview if no search).
-    """
-
-    print("------------------------- Entered read_file -------------------------")
-    print("filename:", filename)
-    print("search:", search)
-
-    # Human-like delay (just for realism)
-    human_delay_for_cmd(f"grep {search} {filename}")
-
-    session = get_session()
-
-    # If search is empty → return a preview instead of full file
-    if not search.strip():
-        # leave filename unquoted so ~ and $HOME are expanded by the remote shell
-        cmd = f"(head -n 30 {filename}; echo '---'; tail -n 30 {filename})"
-    else:
-        # keep it simple: put the pattern in single quotes
-        # this makes spaces work and keeps the regex intact
-        pattern = search.strip().replace("'", r"'\''")
-        cmd = f"grep -n -i -E '{pattern}' {filename} || echo '[NO MATCHES FOUND]'"
-
-    raw_result = session.run_cmd(cmd) or ""
-
-    MAX_CHARS = 400
-    if len(raw_result) > MAX_CHARS:
-        snippet = raw_result[:MAX_CHARS]
-        return (
-            f"[OUTPUT TRUNCATED: showing first {MAX_CHARS} of {len(raw_result)} characters]\n"
-            + snippet.strip()
-        )
-
-    if not raw_result.strip():
-        return "[NO OUTPUT]"
-
-    return raw_result.strip()
-'''
-
 @tool
 def read_file(filename: str) -> str:
     """
-    Read and return the full content of a file.
+    Read a file and return its contents.
 
-    Behavior:
-      - Returns the entire file text.
-      - If content exceeds 4000 characters, output is truncated to the first 4000.
-      - Returns an error message if the file cannot be read.
+    Large files are truncated at the beginning; inspect specific parts with grep or similar tools.
+    Returns an error message if the file cannot be read.
 
-    Args:
-        filename (str): Path to the file.
+    Example:
+    - "/etc/myapp/config.yaml"
 
-    Returns:
-        str: Full or truncated file content.
     """
 
     print("------------------------- Entered read_file -------------------------")
     print("filename:", filename)
 
-    # Human-style delay (reading a file, thinking about it, etc.)
+    # Human-style delay
     human_delay_for_cmd(f"cat {filename}")
 
     session = get_session()
 
-    # We intentionally do NOT quote the filename to preserve ~ expansion.
+    # Do not quote filename so the shell can expand "~" to the home directory.
     cmd = f"cat {filename} 2>/dev/null"
 
     raw = session.run_cmd(cmd)
@@ -377,38 +380,17 @@ def read_file(filename: str) -> str:
 @tool
 def next_command(cmd: str) -> str:
     """
-    Execute a single, non-interactive shell command on the Ubuntu 24.04 host (root).
+    Execute exactly one NON-INTERACTIVE shell command as root.
 
-    Args:
-        cmd (str): The full command to run (exactly ONE line, e.g. "ls -la /var/log").
+    Do not use interactive or full-screen programs (e.g. vim, less, top in interactive mode).
+    Use pipes to keep output short; large output is truncated.
+    Returns "[NO OUTPUT]" if nothing is printed.
 
-    Returns:
-        str: The trimmed stdout/stderr result of the command.
-
-    Usage guidelines:
-        - Avoid destructive operations.
-        - One command per call; keep it ONE line.
-        - Keep output short; use pipes like grep/head/tail for large logs.
-        - No interactive/full-screen tools (e.g., less, top in interactive mode).
-
-    Environment:
-        - You are root via SSH (sudo -i).
-        - The following env vars are assumed for non-paged output:
-            export SYSTEMD_URLIFY=0
-            export SYSTEMD_PAGER=
-            export SYSTEMD_COLORS=0
-
-    Nextcloud context:
-        - Install path: /var/www/nextcloud
-        - Run occ as: /usr/bin/php /var/www/nextcloud/occ
-
-    Logs:
-        - Apache error: /var/log/apache2/nextcloud.local-error.log
-        - Apache access: /var/log/apache2/nextcloud.local-access.log
-
-    System tools available:
-        - curl (HTTP), net-tools, top (batch mode: "top -b -n 1")
+    Example:
+      - "grep -n 'server_url' /etc/myservice/config.yaml"
     """
+
+ 
     print("------------------------- Entered next_command -------------------------")
     print("cmd:", cmd)
 
@@ -435,20 +417,21 @@ def next_command(cmd: str) -> str:
 @tool
 def use_browser(query: str) -> str:
     """
-    Automate browser interactions on nextcloud.local.
-    The **minimum required action for every request is a full login attempt**.
-    
-    Args:
-        query (str): A short natural-language instruction or command sequence for the browser tool.
+    Automate browser interaction with the Nextcloud web UI.
 
-    Returns:
-        str: A brief summary of the browser tasks performed.
+    Performs the actions described in `query` within the web interface.
+    Each invocation is supposed to attempt at least a login to Nextcloud.
+
+    Example:
+      - "Log into Nextcloud and check whether the navigation bar is visible."
+
+    Returns a brief summary of the actions performed.
     """
 
     print("------------------------- Entered use_browser -------------------------")
     print("Query:", query)
 
-    cmd = ["python", "client_openai.py", "--playwright"]
+    cmd = ["python", "browser_agent.py", "--playwright"]
     
     # Run the command, pass the query via stdin, and capture the output
     process = subprocess.Popen(
@@ -485,13 +468,11 @@ def use_browser(query: str) -> str:
 @tool
 def use_vim(filename: str, query: str) -> str:
     """
-    Edit a file using Vim based strictly on the file’s current content and the
-    explicit instructions in `query`.
+    Edit a file using Vim based strictly on its current contents and explicit instructions.
 
-    The tool has **no external knowledge** beyond what is shown in the file and
-    must **not invent or guess** values. Every change must be fully specified
-    in the query (e.g. “replace X with Y”, “delete line containing Z”, 
-    “uncomment this exact line”, etc.).
+    The tool has no external knowledge and must not guess or invent values.
+    All edits must be fully and unambiguously specified in `query`
+    (e.g. replace X with Y, delete a specific line, uncomment an exact line).
 
     Examples of valid instructions:
       - "Replace 'foo' with 'bar' in the config array."
@@ -500,12 +481,11 @@ def use_vim(filename: str, query: str) -> str:
 
     Examples of invalid instructions:
       - "Fix the incorrect settings."
-      - "Set this to the right value."
+      - "Set this to the right value."    
 
-    Returns:
-        A short report of applied changes, or an explanation if no safe,
-        explicit edits could be made.
+    Returns a short report of applied changes or an explanation.
     """
+
 
     print("------------------------- Entered use_vim -------------------------")
     print("filename:", filename)
@@ -519,7 +499,11 @@ def use_vim(filename: str, query: str) -> str:
     try:
         session.start_vim(filename=filename)
         file_content = session.print_file_vim()
-        result = run_file_edit_agent(query=query, file_content=file_content)
+        result = run_file_edit_agent(
+            query=query,
+            file_content=file_content,
+            big_file=len(file_content) > AgentConfig.READ_FILE_MAX_CHARS,
+        )
         updated_file = result["updated_file"]
         explanation = result["explanation"]
         session.overwrite_vim(updated_file)
@@ -556,16 +540,19 @@ tools = [next_command, use_browser, read_file, use_vim, terminate]
 # ---------- LLM client ----------
 summary_model = ChatOpenAI(
     model=AgentConfig.SUMMARY_MODEL_NAME,  # cheap summarizer
-    api_key=API_KEY,
     temperature=AgentConfig.SUMMARY_MODEL_TEMPERATURE,
 )
 
-model = ChatOpenAI(model=AgentConfig.MAIN_MODEL_NAME, api_key=API_KEY, temperature=AgentConfig.MAIN_MODEL_TEMPERATURE).bind_tools(tools=tools)
+model = ChatOpenAI(model=AgentConfig.MAIN_MODEL_NAME, temperature=AgentConfig.MAIN_MODEL_TEMPERATURE).bind_tools(tools=tools)
     #tool_choice={"type": "function", "function": {"name": "it_is_enough"}}  # <-- correct shape
 
 
 # ---------- Nodes ----------
 def decision_node(state: AgentState) -> AgentState:
+
+    # Increment
+    decision_steps = state.get("decision_steps", 0) + 1
+    print("Step:", decision_steps)
 
     # 1) Maybe update the running summary
     summary_updates = maybe_summarize_history(state, AgentConfig.SUMMARY_THRESHOLD)
@@ -573,20 +560,41 @@ def decision_node(state: AgentState) -> AgentState:
     summarized_upto = summary_updates.get("summarized_upto", state.get("summarized_upto", 0))
 
     system_prompt_parts = [
-        "Reference:\n",
-        f"Examples (Admin Routines):\n{examples_content}\n\n",
-        f"Cheat Sheet (occ):\n{cheatsheet_content}\n\n",
-        "You are a linux web-administrator for Ubuntu 24.04 (LAMP, Nextcloud PHP 8.3.6).\n\n",
-        "=== Agent tools ===\n",
-        "1. `next_command(cmd: str)` — run a shell command.\n"
-        "2. `use_browser(query: str)` — interact with the web UI and verify problems (prefer over curl).\n"
-        "3. `use_vim(filename: str, query: str)` — edit files.\n",
-        "4. `read_file(filename: str)` — read the full content of a file (auto-truncated if very large).\n"
-        #"After performing changes, verify it with an appropriate command (e.g., cat the file, check service status)\n"
-        "=== Agent Behaviour Rules ===\n"
-        "- Do NOT ask the user any questions. There is NO interactive user.\n"
-        "- When you reach the end of the task, call the `terminate` tool with a brief summary of your actions and the final state.\n"
+        # --- Role & environment (global invariants) ---
+        "You are a Linux web administrator operating on an Ubuntu 24.04 server.\n"
+        "You have full root access (sudo -i).\n"
+        "The system runs a LAMP stack (Linux, Apache, MariaDB, PHP) with Nextcloud (PHP 8.3.6).\n"
+        "Standard system utilities are available, including curl and net-tools.\n",
+        "A backup of the Nextcloud instance is available at /var/backups.\n\n"
     ]
+
+    # --- Reference material (optional in-context examples) ---
+    if AgentConfig.ENABLE_IN_CONTEXT_EXAMPLES:
+        system_prompt_parts.extend([
+            "Reference material:\n\n",
+            f"Examples (Admin Routines):\n{examples_content}\n\n",
+            f"Cheat Sheet (Nextcloud occ):\n{cheatsheet_content}\n\n",
+        ])
+
+    # --- Available tools ---
+    system_prompt_parts.extend([
+        "Available tools:\n"
+        "1. next_command(cmd: str) — execute one non-interactive shell command.\n"
+        "2. use_browser(query: str) — interact with the Nextcloud web UI (prefer over curl).\n"
+        "3. use_vim(filename: str, query: str) — edit files with explicit instructions.\n"
+        "4. read_file(filename: str) — read file contents (large files are truncated).\n\n",
+
+        # --- Behavioral rules ---
+        "Behavior rules:\n"
+        "- next_command must execute exactly one command. Do not chain multiple commands.\n"
+        "- There is no interactive user; do not ask questions.\n"
+        "- Act autonomously and verify changes when appropriate.\n"
+        "- When the task is complete, call terminate with a brief summary and current status.\n"
+        "- Regularly verify whether the original problem still persists.\n"
+        "- If a verification shows that the problem is resolved, IMMEDIATELY call terminate().\n"
+        "- Do not repeat the same diagnostic command (same file and same intent) unless you changed something relevant.\n"
+        "- NEVER perform large or recursive restore operations (e.g. cp/rsync of whole directories like /var/backups or /var/www);"
+    ])
 
     system_prompt = "".join(system_prompt_parts)
 
@@ -609,13 +617,15 @@ def decision_node(state: AgentState) -> AgentState:
     model_messages.extend(chat_history)
 
     # 5) Call main model
-    response = model.invoke(model_messages)
+    response = invoke_with_retry(model, model_messages)
+
 
     # 6) Return new AI message + summary fields
     return {
         "messages": [response],
         "history_summary": history_summary,
         "summarized_upto": summarized_upto,
+        "decision_steps": decision_steps,
     }
 
 
@@ -667,22 +677,25 @@ app = graph.compile()
 if __name__ == "__main__":
 
     result = None   # <-- ensures finally block can access it
+    get_session()  # guarantees env init + log offsets exist
 
     try:
         result = app.invoke(
             {
                 "messages": [
                     HumanMessage(
-                        content="There is something wrong with nextcloud.Fix it!"
+                        content=AgentConfig.problem_prompt
                     )
                 ],
                 "history_summary": None,
                 "summarized_upto": 0,
+                "decision_steps": 0,
             },
             config={"recursion_limit": AgentConfig.RECURSION_LIMIT},
         )
 
     finally:
+
         # ---- PRINT OUTPUT SAFELY ----
         print("Output:")
         if result is not None:
@@ -693,6 +706,9 @@ if __name__ == "__main__":
                     message.pretty_print()
         else:
             print("[NO RESULT — the agent crashed before producing output]")
+
+        # Print number of recursions
+        print(f"decision_node executions: {result.get('decision_steps', 0)}")
 
         # ---- CLEAN UP SESSION ----
         cleanup_session()

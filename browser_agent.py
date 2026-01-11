@@ -12,10 +12,12 @@ from mcp.client.stdio import stdio_client
 from openai import OpenAI  # OpenAI SDK
 from dotenv import load_dotenv
 
-# ---------- Parameter section! ----------
-DEBUG_FLAG = False
-MODEL = "gpt-4.1"
+# ---------- Hyperparameters / Config ----------
+DEBUG_FLAG = True
+MODEL = "gpt-4.1-mini"
 TEMPERATURE = 0.1
+
+
 
 # --- Load .env BEFORE reading env vars ---
 load_dotenv()
@@ -219,6 +221,10 @@ SYSTEM_PROMPT = (
     "Do not continue indefinitely or repeat actions.\n"
     "After completing the task, produce a concise plain-text report of what happened and stop.\n"
     "Do not ask the user for follow-up steps.\n"
+    "If a selector returns no elements but the page snapshot shows relevant content,"
+    "assume the selector is incorrect.\n"
+    "Do NOT conclude that the content is absent.\n"
+    "Adjust the selector or verify using the snapshot.\n"
 )
 
 # ----------------- Client (OpenAI) -----------------
@@ -389,5 +395,5 @@ async def main():
         await client.cleanup()
 
 if __name__ == "__main__":
-    #uv run client_openai.py --playwright
+    #uv run browser_agent.py --playwright
     asyncio.run(main())

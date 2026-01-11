@@ -1,9 +1,14 @@
 
 Nextcloud
 
---> LAMP-Stack: Linux, Apache, Maria-Database, Php
+--> LAMP-Stack: Linux, Apache, MariaDB, PHP
 
 Log-Location:
 - ErrorLog /var/log/apache2/nextcloud.local-error.log
 - CustomLog /var/log/apache2/nextcloud.local-access.log 
 
+There is a nextcloud backup in: /var/backups
+
+Nextcloud login:
+--> username: admin
+--> password: changeme

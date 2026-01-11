@@ -17,7 +17,7 @@ if __name__ == "__main__":
         print(">> Ready. Perform your manual steps now. Press Enter when done (Ctrl+C to abort).")
 
         # wait for the human to finish
-        input("human is finished?")
+        input("Human has finished?")
 
         # extract new logs and write to file
         read_new_logs(session)

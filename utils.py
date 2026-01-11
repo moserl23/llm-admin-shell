@@ -1,11 +1,10 @@
-# helpers.py
 import re
 import pexpect
 import time
 import random
 
 
-# read relevant files
+# Load in-context learning resources used to prime the LLM
 with open("InContextLearning/examples.txt", "r", encoding="utf-8") as file:
     examples_content = file.read()
 with open("InContextLearning/cheatsheet.txt", "r", encoding="utf-8") as file:
@@ -34,26 +33,26 @@ class ShellSession:
 
     # --- Instance methods ---
     def __init__(self, sentinel="<<<READY>>> "):
+        """Initialize an interactive bash session controlled via pexpect and set the prompt sentinel used for synchronization."""
         self.sentinel = sentinel
         self.child = pexpect.spawn("/bin/bash", ["-i"], encoding="utf-8", timeout=30)
 
     def start_vim(self, filename: str) -> None:
+        """Launch Vim to edit the given file inside the current pexpect-controlled shell session."""
         # send a command
         self.child.sendline(f"sudo vim {filename}")
         # wait for vim start
         time.sleep(2.0)
 
     def grep_vim_debug(self, pattern: str, radius: int = 3):
+        """Run a Vim global-search for a regex pattern and return nearby numbered lines, with extra marker/debug handling for troubleshooting output capture."""
         # clear any pending hit-enter and leave modes
         self.child.send("\x1b")   # ESC
         self.child.send("\r")     # ENTER
 
-        
-        
         if not pattern.startswith(r'\v'):
             pattern = r'\v\c' + pattern
         pat_vim = pattern.replace("'", "''")
-
 
 
         pat_vim = r"\v\c" + r"\w*\s*option"
@@ -95,6 +94,7 @@ class ShellSession:
 
 
     def grep_vim(self, pattern: str, radius: int = 3):
+        """Run a Vim global-search for a regex pattern and return surrounding lines (radius before/after each match) captured from the Vim session."""
         # Clear any pending prompt / mode
         self.child.send("\x1b"); self.child.send("\r")
 
@@ -142,6 +142,7 @@ class ShellSession:
 
 
     def overwrite_vim(self, updated_content):
+        """Replace the entire current Vim buffer with the provided content (delete all lines, enter insert mode, paste, then exit insert mode)."""
         self.child.send("\x1b"); self.child.send("\r")
         self.child.send(":0,$d\r")   # delete all lines
         self.child.send("i")         # insert mode
@@ -149,6 +150,7 @@ class ShellSession:
         self.child.send("\x1b")
 
     def print_file_vim(self):
+        """Print the full current Vim buffer to the pexpect output and return the captured text between BEGIN/END markers."""
         # Clear any pending prompt / mode
         self.child.send("\x1b"); self.child.send("\r")
         # Deactivate interactive features and print content of file
@@ -178,12 +180,13 @@ class ShellSession:
         return ShellSession.strip_tty(raw).strip()
 
     def edit_file_vim(self, keystrokes):
-        
+        """Send a sequence of raw keystrokes to Vim with small randomized delays to simulate interactive editing."""
         for seq in keystrokes:
             self.child.send(seq)
             time.sleep(random.uniform(0.05, 0.25))  # human-like delays
 
     def end_vim(self):
+        """Write the current Vim buffer and quit Vim, then wait until the shell sentinel prompt is seen (recovering if Vim appears stuck)."""
         # make sure the edit is written and vim quits
         self.child.send(":wq\r")
 
@@ -247,17 +250,20 @@ class ShellSession:
         self.child.expect(self.sentinel)
     
 
-    def run_cmd(self, cmd: str) -> str:
+    def run_cmd(self, cmd: str, time: int = None) -> str:
         '''
         Execute a shell command via the active pexpect child process, 
         wait for the sentinel prompt, and return the cleaned output.
         '''
         if not is_safe_command(cmd):
-            return f"Resfuing to run potentially dangerous command: {cmd!r}"
+            return f"Refusing to run potentially dangerous command: {cmd!r}"
 
         self.child.sendline(cmd)
         try:
-            self.child.expect(self.sentinel, timeout=25)
+            if time is None:
+                self.child.expect(self.sentinel, timeout=100) # timeout for a command
+            else:
+                self.child.expect(self.sentinel, timeout=time) # timeout for a command
         except pexpect.TIMEOUT:
             print("Timeout was reached!")
             self.child.send('\x03')  # Ctrl-C
@@ -323,9 +329,10 @@ def init_env_and_log_offsets(session):
 
     # set environment variable to extract new logs
     session.run_cmd('POS_nextcloud=$(stat -c %s /var/www/nextcloud/data/nextcloud.log)')
-    session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
     session.run_cmd('POS_syslog=$(stat -c %s /var/log/syslog)')
     session.run_cmd('POS_authlog=$(stat -c %s /var/log/auth.log)')
+    session.run_cmd('POS_audit=$(stat -c %s /var/log/audit/audit.log)')
+
 
 def read_new_logs(session):
     '''
@@ -333,15 +340,15 @@ def read_new_logs(session):
     and write them to corresponding files in the LOGS/ directory.
     '''
     logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
-    with open("BreakScenarios/LOGS_Result/LLM_nextcloud.log", "w", encoding="utf-8") as f: # change
-        f.write(logs)
-    logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log')
-    with open("BreakScenarios/LOGS_Result/LLM_audit.log", "w", encoding="utf-8") as f: # change
+    with open("LOGS/LLM_nextcloud.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_syslog+1)) /var/log/syslog')
-    with open("BreakScenarios/LOGS_Result/LLM_syslog.log", "w", encoding="utf-8") as f: # change
+    with open("LOGS/LLM_syslog.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_authlog+1)) /var/log/auth.log')
-    with open("BreakScenarios/LOGS_Result/LLM_auth.log", "w", encoding="utf-8") as f: # change
+    with open("LOGS/LLM_auth.log", "w", encoding="utf-8") as f:
+        f.write(logs)
+    logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log', time = 3600) # audit might be big, therefor extract it last.
+    with open("LOGS/LLM_audit.log", "w", encoding="utf-8") as f:
         f.write(logs)
 

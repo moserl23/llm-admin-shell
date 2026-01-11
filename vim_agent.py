@@ -7,15 +7,24 @@ from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 
 # Typing
-from typing import TypedDict, Optional, Annotated, Sequence, List, Dict, Literal
+from typing import TypedDict, Optional, Annotated, Sequence, List, Literal
 from pydantic import BaseModel
 import re
 
 # Config
-from config import API_KEY
+#from config import API_KEY
+from dotenv import load_dotenv
+load_dotenv()
 
 # ---------- Global ----------
 FILE_CACHE: Optional[str] = None
+
+
+# ---------- Hyperparameters / Config ----------
+class EditAgentConfig:
+    MODEL_NAME = "gpt-4.1"
+    TEMPERATURE = 0.3
+    RECURSION_LIMIT = 30
 
 
 class AgentState(TypedDict):
@@ -39,6 +48,7 @@ def finalize_patch(patch: Patch, explanation: str) -> str:
     Submit the final patch and explanation.
     """
 
+    # DEBUG
     print("patch:", patch)
     print("explaination:", explanation)
 
@@ -98,7 +108,7 @@ def finalize_patch(patch: Patch, explanation: str) -> str:
         for i, line in enumerate(content_lines)
     )
 
-    # You can return the updated content or just "OK"
+    # Return explanation
     return explanation
 
 
@@ -238,7 +248,7 @@ tools_big_file = [read_file_slice, search_regex_window, search_text_window, fina
 all_tools = tools_big_file + tools_small_file
 
 # ---------- LLM client ----------
-base_model = ChatOpenAI(model="gpt-4.1", api_key=API_KEY, temperature=0.3)
+base_model = ChatOpenAI(model=EditAgentConfig.MODEL_NAME, temperature=EditAgentConfig.TEMPERATURE)
 
 
 # ---------- Nodes ----------
@@ -504,9 +514,14 @@ graph.add_conditional_edges(
     },
 )
 
+# ---------- Compile & run ----------
+app = graph.compile()
 
-def run_file_edit_agent(query: str, file_content: str) -> dict:
-
+def run_file_edit_agent(
+    query: str,
+    file_content: str,
+    big_file: bool,
+) -> dict:
 
     # Add 1-based line numbers
     numbered_content = "\n".join(
@@ -518,12 +533,14 @@ def run_file_edit_agent(query: str, file_content: str) -> dict:
     global FILE_CACHE
     FILE_CACHE = numbered_content
 
+    file_size_mode = "big" if big_file else "small"
+
     result = app.invoke(
         {
             "messages": [HumanMessage(content=query)],
-            "file_size_mode": "big",
+            "file_size_mode": file_size_mode,
         },
-        config={"recursion_limit": 20},
+        config={"recursion_limit": EditAgentConfig.RECURSION_LIMIT},
     )
 
 
@@ -553,55 +570,14 @@ def run_file_edit_agent(query: str, file_content: str) -> dict:
     }
 
 
-# ---------- Compile & run ----------
-app = graph.compile()
+
 
 if __name__ == "__main__":
-
-    # Read the file from the current directory
-    with open("play_example_config.toml", "r", encoding="utf-8") as f:
-        raw_content = f.read()
-
-    # Add 1-based line numbers
-    numbered_content = "\n".join(
-        f"{i+1}: {line}"
-        for i, line in enumerate(raw_content.splitlines())
-    )
-
-    # Store in global cache for tools
-    FILE_CACHE = numbered_content
-
-    # Ask the user for an editing query
-    editing_query = input("Query: ")
-
-    # Decide file size mode based on character length
-    file_size_mode = "big" if len(raw_content) > 4000 else "small"
-
-    # Invoke the graph
-    result = app.invoke(
-        {
-            "messages": [
-                HumanMessage(content=editing_query)
-            ],
-            "file_size_mode": file_size_mode,
-        },
-        config={"recursion_limit": 20},
-    )
-
-    
-    # Message History
-    print("Output:")
-    for message in result["messages"]:
-        if isinstance(message, tuple):
-            print(message)
-        else:
-            message.pretty_print()
+    pass
     
     
         
-    # Final File result
-    #print("----------------------------- Updated File -----------------------------")
-    #print(FILE_CACHE)
+
 
 
 
