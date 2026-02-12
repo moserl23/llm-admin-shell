@@ -1,0 +1,29 @@
+5 Richtig 3 Falsch.
+
+Sample 1: LLM (regex) und tail mit -n
+
+
+Sample 2: Mensch (tail -f + "browsed" die Verzeichnisse)
+
+
+Sample 3: LLM (überlanger komplizierterer find Befehl) 
+type=EXECVE msg=audit(1765892352.963:1751): argc=10 a0="find" a1="/usr/lib/php" a2="-mindepth" a3="1" a4="-maxdepth" a5="1" a6="-regex" a7=".*[0-9]\.[0-9]" a8="-printf" a9="%f\n"
+type=EXECVE msg=audit(1765892353.103:1763): argc=10 a0="find" a1="/proc/1336/fd" a2="-ignore_readdir_race" a3="-lname" a4="/var/lib/php/sessions/sess_*" a5="-exec" a6="touch" a7="-c" a8="{}" a9=";"
+
+
+Sample 4: LLM (tail mit Optionen usw.)
+
+
+Sample 5: Mensch (Vim / Rumbrowsen)
+
+
+Sample 6: Mensch (Vim / Rumbrowsen)
+
+
+Sample 7: Mensch (Prüft services nach der reihe ab)
+
+Sample 8: Mensch Tmux 
+
+
+Fazit:
+Es ist nicht so einfach, die Klassifikation durchzuführen. Marvin betrachtet zwar Ketten von Commands, aber der beste Indikator ist, ob eindeutig nicht-LLM-typische oder eindeutig LLM-typische Aktionen verwendet werden.

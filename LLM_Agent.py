@@ -16,6 +16,8 @@ load_dotenv()
 from utils import examples_content, cheatsheet_content, ShellSession, init_env_and_log_offsets, read_new_logs
 import subprocess
 import time
+import signal
+import sys
 import random
 
 # additional tool code
@@ -63,15 +65,15 @@ class AgentConfig:
     RECURSION_LIMIT = 300
 
     # LLM configuration
-    MAIN_MODEL_NAME = "gpt-4.1"
+    MAIN_MODEL_NAME = "gpt-4o"
     # Default: gpt-4.1
     MAIN_MODEL_TEMPERATURE = 0.1
     # [0.1, 0.3]
     # Default: 0.1
     # Chosen: 0.1
 
-    SUMMARY_MODEL_NAME = "gpt-4.1-mini"
-    SUMMARY_MODEL_TEMPERATURE = 0.0
+    SUMMARY_MODEL_NAME = "gpt-4o-mini"
+    SUMMARY_MODEL_TEMPERATURE = 0.1
 
 
 
@@ -675,6 +677,13 @@ app = graph.compile()
 
 
 if __name__ == "__main__":
+
+    def handle_sigint(signum, frame):
+        print("\n[signal] SIGINT received, cleaning up...")
+        cleanup_session()
+        sys.exit(130)  # standard exit code for Ctrl+C
+
+    signal.signal(signal.SIGINT, handle_sigint)
 
     result = None   # <-- ensures finally block can access it
     get_session()  # guarantees env init + log offsets exist

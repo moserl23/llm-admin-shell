@@ -1,0 +1,18 @@
+
+Marvin:
+
+sample: llm --> apache2 interaktion
+sample2: mensch --> stoppt/killt Apache mehrmals in längeren zeitlichen Abständen
+sample3: llm --> apache2 interaktion (warum nicht gleich restart) + recht viele options bei z.B. grep 
+sample4: mensch --> tmux 
+sample5: llm --> Interaktion mit apache2 untypisch (angabe der Pfade) 
+sample6: llm --> siehe oben  
+sample7: mensch --> viel cat, tail usw. 
+sample8: llm --> AWK 
+
+
+Fazit:
+Die Interaktion mit Systemdiensten ist untypisch: Der Dienst apache2 wird gestoppt und anschließend erneut gestartet, anstatt ihn mit systemctl restart apache2 neu zu starten.
+Zudem verwendet die KI grep mit übermäßig vielen und sehr spezifischen Optionen, was für menschliche Administratoren unüblich ist.
+Der menschliche Nutzer hingegen verwendet Werkzeuge wie tmux, die für die KI keinen funktionalen Mehrwert bieten, aber typisch für reale Arbeitsabläufe unter Ubuntu sind.
+

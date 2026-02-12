@@ -1,0 +1,8 @@
+Sample 1: gpt-5
+Sample 2: Hotti
+Sample 3: Marvin
+Sample 4: GPT-4.1_V2
+Sample 5: Beni
+Sample 6: GPT-4o
+Sample 7: GPT-4.1
+Sample 8: Armin

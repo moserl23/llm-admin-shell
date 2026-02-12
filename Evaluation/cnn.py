@@ -6,8 +6,18 @@ from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import os, random
+from sklearn.metrics import classification_report, balanced_accuracy_score
 
-print("Reached after imports!")
+
+SEED = 42
+
+
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+
 
 # --------------------------------------------------------
 # 1. LOG DATA
@@ -92,7 +102,7 @@ def pad(seq, max_len):
 X = np.array([pad(s, max_len) for s in encoded], dtype=np.int64)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, labels, test_size=0.3, stratify=labels
+    X, labels, test_size=0.3, stratify=labels, random_state=SEED
 )
 
 # --------------------------------------------------------
@@ -119,27 +129,35 @@ class MultiKernelCharCNN(nn.Module):
     def __init__(self, vocab_size, embed_dim=64, num_filters=64):
         super().__init__()
 
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
 
         # Multi-scale convolution kernels
-        self.conv3 = nn.Conv1d(embed_dim, num_filters, kernel_size=3)
-        self.conv5 = nn.Conv1d(embed_dim, num_filters, kernel_size=5)
-        self.conv7 = nn.Conv1d(embed_dim, num_filters, kernel_size=7)
+        self.conv3 = nn.Conv1d(embed_dim, num_filters, kernel_size=3, padding=1)
+        self.conv5 = nn.Conv1d(embed_dim, num_filters, kernel_size=5, padding=2)
+        self.conv7 = nn.Conv1d(embed_dim, num_filters, kernel_size=7, padding=3)
 
+        # Batch Normalization
+        self.bn3 = nn.BatchNorm1d(num_filters)
+        self.bn5 = nn.BatchNorm1d(num_filters)
+        self.bn7 = nn.BatchNorm1d(num_filters)
+
+        # Pooling
         self.pool = nn.AdaptiveMaxPool1d(1)
 
-        # Final classifier
+        # Final classifier, Fully-Connected
         self.fc1 = nn.Linear(num_filters * 3, 128)
         self.fc2 = nn.Linear(128, 1)
         self.dropout = nn.Dropout(0.5)
+
+
 
     def forward(self, x):
         x = self.embedding(x)        # (B, L, E)
         x = x.permute(0, 2, 1)       # (B, E, L)
 
-        x3 = torch.relu(self.conv3(x))
-        x5 = torch.relu(self.conv5(x))
-        x7 = torch.relu(self.conv7(x))
+        x3 = torch.relu(self.bn3(self.conv3(x)))
+        x5 = torch.relu(self.bn5(self.conv5(x)))
+        x7 = torch.relu(self.bn7(self.conv7(x)))
 
         x3 = self.pool(x3).squeeze(-1)
         x5 = self.pool(x5).squeeze(-1)
@@ -160,7 +178,18 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = MultiKernelCharCNN(vocab_size).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-criterion = nn.BCEWithLogitsLoss()
+
+# y_train is numpy float array (0.0 or 1.0)
+n_pos = (y_train == 1).sum()
+n_neg = (y_train == 0).sum()
+
+pos_weight_value = n_neg / max(n_pos, 1)  # avoid division by zero
+print("n_pos:", n_pos, "n_neg:", n_neg, "pos_weight:", pos_weight_value)
+
+pos_weight = torch.tensor([pos_weight_value], dtype=torch.float32, device=device)
+
+criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+
 
 # --------------------------------------------------------
 # 8. Training Loop
@@ -187,19 +216,29 @@ for epoch in range(20):
 # 9. Evaluation
 # --------------------------------------------------------
 model.eval()
-correct = 0
-total = 0
+
+all_preds = []
+all_labels = []
 
 with torch.no_grad():
     for Xb, yb in test_loader:
         Xb, yb = Xb.to(device), yb.to(device)
+
         logits = model(Xb).squeeze(-1)
         probs = torch.sigmoid(logits)
-        preds = (probs >= 0.5).float()
-        correct += (preds == yb).sum().item()
-        total += len(yb)
+        preds = (probs >= 0.5).long()
 
-print("\nTest Accuracy:", correct / total)
+        all_preds.append(preds.cpu())
+        all_labels.append(yb.long().cpu())
+
+# concatenate batches
+y_pred = torch.cat(all_preds).numpy()
+y_true = torch.cat(all_labels).numpy()
+
+# metrics
+print("\nBalanced Accuracy:", balanced_accuracy_score(y_true, y_pred))
+print("\nClassification Report:\n")
+print(classification_report(y_true, y_pred, digits=4))
 
 # --------------------------------------------------------
 # 10. Predict New Log

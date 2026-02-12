@@ -6,7 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import BoundaryNorm
 
-from evaluation_main import Evaluation
+# custom
+from Evaluation.evaluation_class import Evaluation
+import all_file_paths
 
 
 def make_labels(files: List[str]) -> List[str]:
@@ -18,8 +20,9 @@ def make_labels(files: List[str]) -> List[str]:
     labels: List[str] = []
     pat = re.compile(r"LOGS_Result_([^/]+)")
     for f in files:
-        m = pat.search(f)
-        labels.append(m.group(1) if m else os.path.basename(f))
+        f_str = str(f)
+        m = pat.search(f_str)
+        labels.append(m.group(1) if m else os.path.basename(f_str))
     return labels
 
 
@@ -50,7 +53,7 @@ def make_eval_fn(method_name: str) -> Callable[[str, str], int]:
         needs_templates = method_name in {
             "n_gram_evaluate",
             "one_gram_evaluate",
-            "complexit_index_evaluate",
+            "complexity_index_evaluate",
         }
         if needs_templates:
             ev.build_templates()
@@ -131,23 +134,22 @@ def plot_pairwise_differences(
 
     return M
 
+def slice_paths(experiment_number: int, log_type: str)-> list:
+    return [
+        name_dict[experiment_number][log_type]
+        for name_dict in all_file_paths.files.values()
+    ]
 
 if __name__ == "__main__":
-    files = [
-        "/home/lorenz/Documents/llm-admin-shell/ExperimentResult/LOGS_Result_Armin/exp7/LLM_audit.log",
-        "/home/lorenz/Documents/llm-admin-shell/ExperimentResult/LOGS_Result_Benni/exp7/LLM_audit.log",
-        "/home/lorenz/Documents/llm-admin-shell/ExperimentResult/LOGS_Result_Hotti/exp7/LLM_audit.log",
-        "/home/lorenz/Documents/llm-admin-shell/ExperimentResult/LOGS_Result_Marvin/exp7/LLM_audit.log",
-        #"/home/lorenz/Documents/llm-admin-shell/ExperimentResult/LOGS_Result_Nico/exp7/LLM_audit.log",
-        #"/home/lorenz/Documents/llm-admin-shell/ExperimentResult/LOGS_Result_Torina/exp7/LLM_audit.log",
-    ]
 
     difference_functions = [
         make_eval_fn("event_time_evaluate"),        # returns 0/1
         make_eval_fn("n_gram_evaluate"),            # can return 0..#models
-        make_eval_fn("combo_detector_evaluate"),    # returns 0/1
-        make_eval_fn("complexit_index_evaluate"),   # can return 0..#metrics
+        #make_eval_fn("combo_detector_evaluate"),    # returns 0/1
+        make_eval_fn("complexity_index_evaluate"),   # can return 0..#metrics
     ]
+
+    files = slice_paths(7, "audit")
 
     labels = make_labels(files)
 

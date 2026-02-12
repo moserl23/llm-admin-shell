@@ -235,7 +235,9 @@ class ShellSession:
         in the pexpect session.
         '''
         # connecting to server
-        cmd = "ssh final_arena_server" #"ssh server"
+        cmd = "ssh arena_wp" #"ssh server"
+        # final_arena_server
+        # arena_wp
         self.child.sendline(cmd)
         self.child.expect(r"[$#] ")
         self.child.expect(r"[$#] ")
@@ -340,15 +342,15 @@ def read_new_logs(session):
     and write them to corresponding files in the LOGS/ directory.
     '''
     logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
-    with open("LOGS/LLM_nextcloud.log", "w", encoding="utf-8") as f:
+    with open("LOGS/nextcloud.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_syslog+1)) /var/log/syslog')
-    with open("LOGS/LLM_syslog.log", "w", encoding="utf-8") as f:
+    with open("LOGS/syslog.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_authlog+1)) /var/log/auth.log')
-    with open("LOGS/LLM_auth.log", "w", encoding="utf-8") as f:
+    with open("LOGS/auth.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log', time = 3600) # audit might be big, therefor extract it last.
-    with open("LOGS/LLM_audit.log", "w", encoding="utf-8") as f:
+    with open("LOGS/audit.log", "w", encoding="utf-8") as f:
         f.write(logs)
 

@@ -1,0 +1,8 @@
+Sample 1: Marvin
+Sample 2: gpt4.1
+Sample 3: gpt5
+Sample 4: Armin
+Sample 5: Hotti
+Sample 6: Benni
+Sample 7: GPT-4o GELÖSCHT wegen defekten Log-Daten
+Sample 8: GPT-4.1_V2
