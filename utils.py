@@ -194,7 +194,7 @@ class ShellSession:
         # make sure the edit is written and vim quits
         self.child.send(":wq\r")
 
-        # now wait for your normal shell sentinel
+        # now wait for your normal shell sentinel 
         try:
             self.child.expect(self.sentinel, timeout=30)
         except pexpect.TIMEOUT:
