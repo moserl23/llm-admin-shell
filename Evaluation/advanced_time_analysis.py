@@ -270,22 +270,23 @@ def plot_log_hist(values: List[float], title: str, xlabel: str, bins_n: int = 50
 
 def basic_stat(values: List[float]) -> Dict[str, float]:
     values = [v for v in values if np.isfinite(v)]
-
     if not values:
         return {}
 
-    v = sorted(values)
+    v = np.array(sorted(values), dtype=float)
+
     stats = {
-        "min": v[0],
+        "min": float(v[0]),
         "median": float(np.median(v)),
-        "max": v[-1],
+        "max": float(v[-1]),
         "average": float(np.mean(v)),
+        # deviation/dispersion:
+        "std": float(np.std(v, ddof=1)) if len(v) > 1 else 0.0,   # sample std dev
+        "count": float(len(v)),
+        # optional robust spread:
+        "iqr": float(np.percentile(v, 75) - np.percentile(v, 25)) if len(v) > 1 else 0.0,
     }
-
     return stats
-
-
-
 
 
 def analyze_file(path: str, cluster_window: float = 0.5, print_plot_flag: bool = False, cmd: Optional[str] = None) -> Dict[str, Any]:
@@ -378,34 +379,12 @@ def compare_files_plot(
     series: Series = "all",
     cmd: Optional[str] = None,
     title: Optional[str] = None,
+    dev_metric: str = "std",   # NEW: "std" or "iqr" or ...
 ) -> List[Dict[str, Any]]:
-    """
-    Analyze multiple audit log files and plot a chosen metric across them.
-
-    Args:
-        paths: list of audit log file paths
-        labels: list of labels for x-axis (must match length of paths)
-        cluster_window: clustering window passed to analyze_file
-        metric: which statistic to plot ("median" or "average")
-        series: which delta series to use ("all" for all inter-cluster deltas,
-                "cmd" for cmd->next-cluster deltas)
-        title: optional plot title
-
-    Returns:
-        A list of analyze_file() result dicts (one per file), in the same order.
-    """
-    if len(paths) != len(labels):
-        raise ValueError(f"paths and labels must have same length (got {len(paths)} and {len(labels)})")
-    
-    if series == "cmd" and not cmd:
-        raise ValueError("series='cmd' requires cmd='...'. Example: cmd='grep' or cmd='tail'")
-
-    # command normalization
-    if cmd:
-        cmd = os.path.basename(cmd)
-
+    ...
     results: List[Dict[str, Any]] = []
     y: List[float] = []
+    yerr: List[float] = []     # NEW
 
     for p in paths:
         res = analyze_file(p, cluster_window=cluster_window, print_plot_flag=False, cmd=cmd)
@@ -419,22 +398,22 @@ def compare_files_plot(
         else:
             stats = {}
 
-        val = stats.get(metric, float("nan"))
-        y.append(val)
+        y.append(stats.get(metric, float("nan")))
+        yerr.append(stats.get(dev_metric, float("nan")))   # NEW
 
-    # Plot
     plt.figure(figsize=(max(6, 0.8 * len(labels)), 4))
-    plt.bar(labels, y)
+    plt.bar(labels, y, yerr=yerr, capsize=4)  # NEW: yerr + capsize
     ylabel_series = "all" if series == "all" else cmd
     plt.ylabel(f"{ylabel_series}.{metric} (seconds)")
     plt.xlabel("File")
     series_label = "all" if series == "all" else (cmd or "cmd")
-    plt.title(title or f"{series_label} {metric} by file (cluster_window={cluster_window}s)")    
+    plt.title(title or f"{series_label} {metric} by file (cluster_window={cluster_window}s)")
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     plt.show()
 
     return results
+
 
 
 # -----------------------------
@@ -461,13 +440,18 @@ if __name__ == "__main__":
     # interesting commands: grep, rg, ripgrep, sed, awk, less, more, most, ls, tree, stat, file, vim, cd, rm, mv, cp, chmod, chown, curl, wget, scp
 
     cmd = "grep"
+    cmd = "tail"
+    cmd = "vim"
+    cmd = "chmod"
+    cmd = "ls"
 
     compare_files_plot(
         paths,
         labels,
         cluster_window=cluster_window,
-        metric="average",
+        metric="median",
         series="cmd",
         cmd=cmd,
-        title=f"commmand latency comparison ({cmd})",
+        dev_metric="iqr",  # <- standard deviation error bars
+        title=f"command latency comparison ({cmd})",
     )

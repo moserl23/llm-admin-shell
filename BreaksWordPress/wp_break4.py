@@ -30,6 +30,32 @@ def fix(session):
     session.run_cmd("sudo systemctl reload apache2 || true")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Problem: WordPress is dead (fatal error / 500)
 
 if __name__ == "__main__":
@@ -37,7 +63,7 @@ if __name__ == "__main__":
     session.connect_root_setSentinel()
     session.deactivate_history()
 
-    #config(session)   # break
-    fix(session)     # fix
+    config(session)   # break
+    #fix(session)     # fix
 
     session.close()

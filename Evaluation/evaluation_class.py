@@ -19,6 +19,8 @@ from statistics import NormalDist
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 from sklearn.svm import LinearSVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
@@ -38,6 +40,10 @@ from sklearn.metrics import (
     f1_score,
     confusion_matrix,
 )
+
+def _safe_log1p(x: np.ndarray) -> np.ndarray:
+    # x is non-negative; log1p handles 0 nicely
+    return np.log1p(np.clip(x, 0.0, None))
 
 class Evaluation:
 
@@ -1137,6 +1143,243 @@ class Evaluation:
         }
 
 
+    def inter_event_classifier_report(
+        self,
+        *,
+        max_lines: int = 5000,
+        min_events: int = 20,
+        test_size: float = 0.30,
+        random_state: int = 42,
+        model: Literal["logreg", "svm", "rf"] = "logreg",
+        use_log_transform: bool = True,
+        use_scaling: bool = True,
+        # --- NEW: window classification ---
+        window_mode: Literal["single", "window"] = "single",
+        window_size: int = 5,
+        window_stride: int = 1,
+        drop_last: bool = True,
+        # optional: to avoid leakage by splitting within each class first
+        split_within_class: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Train a classifier to distinguish sample_1 vs sample_2 using ONLY inter-event times.
+
+        Labels:
+        0 -> file_1 (human)
+        1 -> file_2 (ai)
+
+        window_mode:
+        - "single": each sample is one inter-event diff (shape (N,1))  [old behavior]
+        - "window": each sample is a window of consecutive diffs (shape (Nw, window_size))
+
+        Notes:
+        - With window_mode="window", you usually want window_stride=1 (overlapping)
+        - We split within each class first to avoid train/test mixing artifacts.
+        """
+
+        def _make_windows_1d(x: np.ndarray, size: int, stride: int, drop_last: bool) -> np.ndarray:
+            x = np.asarray(x, dtype=float).reshape(-1)
+            n = x.size
+            if size <= 0:
+                raise ValueError("window_size must be > 0")
+            if stride <= 0:
+                raise ValueError("window_stride must be > 0")
+            if n < size:
+                return np.empty((0, size), dtype=float)
+
+            starts = range(0, n - size + 1, stride)
+            wins = np.stack([x[s:s + size] for s in starts], axis=0)
+
+            if not drop_last:
+                # include one final partial window (padded with last value) if there is remainder
+                last_start = (n - 1) // stride * stride
+                if last_start + size > n:
+                    chunk = x[last_start:]
+                    pad_val = chunk[-1]
+                    padded = np.pad(chunk, (0, size - chunk.size), mode="constant", constant_values=pad_val)
+                    wins = np.vstack([wins, padded.reshape(1, -1)])
+
+            return wins
+
+        res = self.inter_event_result(max_lines=max_lines, min_events=min_events)
+        diffs1 = res["diffs_1"]
+        diffs2 = res["diffs_2"]
+
+        if diffs1.size == 0 or diffs2.size == 0:
+            return {
+                "settings": {
+                    "max_lines": max_lines,
+                    "min_events": min_events,
+                    "test_size": test_size,
+                    "random_state": random_state,
+                    "model": model,
+                    "use_log_transform": use_log_transform,
+                    "use_scaling": use_scaling,
+                    "window_mode": window_mode,
+                    "window_size": window_size,
+                    "window_stride": window_stride,
+                    "drop_last": drop_last,
+                    "split_within_class": split_within_class,
+                },
+                "data": {
+                    "n_diffs_1": int(diffs1.size),
+                    "n_diffs_2": int(diffs2.size),
+                    "note": "Not enough inter-event samples to train/evaluate.",
+                },
+                "metrics": {},
+            }
+
+        # --------- build base arrays ----------
+        X1 = diffs1.astype(float)
+        X2 = diffs2.astype(float)
+
+        # optional: log transform (often helps)
+        if use_log_transform:
+            X1 = _safe_log1p(X1)
+            X2 = _safe_log1p(X2)
+
+        # --------- NEW: windowing ----------
+        if window_mode == "window":
+            W1 = _make_windows_1d(X1, window_size, window_stride, drop_last)
+            W2 = _make_windows_1d(X2, window_size, window_stride, drop_last)
+
+            if W1.shape[0] == 0 or W2.shape[0] == 0:
+                return {
+                    "settings": {
+                        "max_lines": max_lines,
+                        "min_events": min_events,
+                        "test_size": test_size,
+                        "random_state": random_state,
+                        "model": model,
+                        "use_log_transform": use_log_transform,
+                        "use_scaling": use_scaling,
+                        "window_mode": window_mode,
+                        "window_size": window_size,
+                        "window_stride": window_stride,
+                        "drop_last": drop_last,
+                        "split_within_class": split_within_class,
+                    },
+                    "data": {
+                        "n_windows_1": int(W1.shape[0]),
+                        "n_windows_2": int(W2.shape[0]),
+                        "note": "Not enough window samples (try smaller window_size).",
+                    },
+                    "metrics": {},
+                }
+
+            # build full dataset
+            X = np.vstack([W1, W2])                 # (Nw, window_size)
+            y = np.array([0] * len(W1) + [1] * len(W2), dtype=int)
+
+            # split: best to split within each class (avoids odd stratify behavior w/ heavy overlap)
+            if split_within_class:
+                idx1 = np.arange(len(W1))
+                idx2 = np.arange(len(W2)) + len(W1)
+
+                tr1, te1 = train_test_split(idx1, test_size=test_size, random_state=random_state, shuffle=True)
+                tr2, te2 = train_test_split(idx2, test_size=test_size, random_state=random_state, shuffle=True)
+
+                train_idx = np.concatenate([tr1, tr2])
+                test_idx  = np.concatenate([te1, te2])
+
+                X_train, y_train = X[train_idx], y[train_idx]
+                X_test,  y_test  = X[test_idx],  y[test_idx]
+            else:
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, test_size=test_size, random_state=random_state, stratify=y
+                )
+
+            n_feat = window_size
+
+        else:
+            # old behavior: single diff per sample
+            X = np.concatenate([X1, X2], axis=0).reshape(-1, 1)
+            y = np.array([0] * len(X1) + [1] * len(X2), dtype=int)
+
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=test_size, random_state=random_state, stratify=y
+            )
+            n_feat = 1
+
+        # --------- choose model ----------
+        if model == "logreg":
+            base = LogisticRegression(max_iter=2000, class_weight="balanced")
+        elif model == "svm":
+            base = LinearSVC(class_weight="balanced")
+        elif model == "rf":
+            base = RandomForestClassifier(
+                n_estimators=400, random_state=random_state, class_weight="balanced"
+            )
+        else:
+            raise ValueError("model must be one of: 'logreg', 'svm', 'rf'")
+
+        # scaling: useful for logreg/svm; not needed for rf
+        if use_scaling and model in ("logreg", "svm"):
+            clf = make_pipeline(StandardScaler(), base)
+        else:
+            clf = base
+
+        # --------- train + predict ----------
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_test)
+
+        # --------- metrics ----------
+        bac = float(balanced_accuracy_score(y_test, y_pred))
+        acc = float(accuracy_score(y_test, y_pred))
+        prec = float(precision_score(y_test, y_pred, pos_label=1, zero_division=0))
+        rec = float(recall_score(y_test, y_pred, pos_label=1, zero_division=0))
+        f1 = float(f1_score(y_test, y_pred, pos_label=1, zero_division=0))
+        tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
+
+        # helpful counts depending on mode
+        data_block: dict[str, Any] = {
+            "dominant_type_1": res.get("dominant_type_1"),
+            "dominant_type_2": res.get("dominant_type_2"),
+            "n_timestamps_1": int(res.get("n_timestamps_1", 0)),
+            "n_timestamps_2": int(res.get("n_timestamps_2", 0)),
+            "n_features_per_sample": int(n_feat),
+            "n_train": int(len(y_train)),
+            "n_test": int(len(y_test)),
+        }
+        if window_mode == "window":
+            data_block.update({
+                "n_windows_1": int(len(W1)),
+                "n_windows_2": int(len(W2)),
+            })
+        else:
+            data_block.update({
+                "n_diffs_1": int(len(X1)),
+                "n_diffs_2": int(len(X2)),
+            })
+
+        return {
+            "settings": {
+                "max_lines": max_lines,
+                "min_events": min_events,
+                "test_size": test_size,
+                "random_state": random_state,
+                "model": model,
+                "use_log_transform": use_log_transform,
+                "use_scaling": use_scaling,
+                "window_mode": window_mode,
+                "window_size": window_size,
+                "window_stride": window_stride,
+                "drop_last": drop_last,
+                "split_within_class": split_within_class,
+            },
+            "data": data_block,
+            "metrics": {
+                "balanced_accuracy": bac,
+                "accuracy": acc,
+                "precision": prec,
+                "recall": rec,
+                "f1": f1,
+                "confusion_matrix": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
+            },
+        }
+
+
+
     def n_gram_report(
         self,
         max_lines: int = 5000,
@@ -1764,6 +2007,27 @@ class Evaluation:
             raise KeyError(f"DetectMate output missing 'anomalie_count'. Keys: {list(res.keys())}")
 
         return int(res["anomalie_count"])
+
+
+    def combo_detector_total_missing_combos(self, *, max_lines: int = 5000) -> int:
+        """
+        Train combo detector on 100% of file_1 logs and test on 100% of file_2 logs.
+        Returns the sum of missing combo counts across all detected anomalies.
+        If there are no anomalies, returns 0.
+        """
+        if self.lines_file_1 is None or self.lines_file_2 is None:
+            raise RuntimeError("lines_file_1 / lines_file_2 are not set. Call set_files() first.")
+
+        train_logs = self.lines_file_1[:max_lines]
+        test_logs  = self.lines_file_2[:max_lines]
+
+        if len(train_logs) == 0 or len(test_logs) == 0:
+            raise ValueError(f"Need non-empty train/test. Got train={len(train_logs)} test={len(test_logs)}")
+
+        res = self._run_combo_detector(train_logs, test_logs)
+
+        return int(res["total_missing_combo_count"])
+
 
 
     def complexity_indices_result(

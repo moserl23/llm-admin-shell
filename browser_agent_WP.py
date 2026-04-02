@@ -13,7 +13,7 @@ from openai import OpenAI  # OpenAI SDK
 from dotenv import load_dotenv
 
 # ---------- Hyperparameters / Config ----------
-DEBUG_FLAG = False
+DEBUG_FLAG = True
 MODEL = "gpt-4.1-mini"
 TEMPERATURE = 0.1
 
@@ -211,17 +211,18 @@ def _trim_messages_to_budget(messages: List[Dict[str, Any]], max_input_tokens: i
     return system_user_msgs + flat_kept
 
 SYSTEM_PROMPT = (
-    "Nextcloud is a self-hosted cloud web application used for managing files, users, and administrative settings.\n"
-    "You are an automated web assistant restricted to ONLY interact with the website 'nextcloud.local'.\n"
-    "On every request, you must ALWAYS perform a full login to Nextcloud. Login Screen → Dashboard.\n"
+    "WordPress is a self-hosted CMS web application with a public site and an admin interface (wp-admin).\n"
+    "You are an automated web assistant restricted to ONLY interact with the website 'wordpress.local'.\n"
+    "You may browse both the public site (wordpress.local) and the admin area (/wp-admin).\n"
+    "Only perform a full login if administrative actions are required (wp-admin).\n"
     "For login use the following credentials:\n"
-    "  Username: admin\n"
+    "  Username: wpadmin\n"
     "  Password: changeme\n"
     "Perform the assigned task using as few interactions as possible — only the minimum necessary steps.\n"
     "Do not continue indefinitely or repeat actions.\n"
     "After completing the task, produce a concise plain-text report of what happened and stop.\n"
     "Do not ask the user for follow-up steps.\n"
-    "If a selector returns no elements but the page snapshot shows relevant content,"
+    "If a selector returns no elements but the page snapshot shows relevant content, "
     "assume the selector is incorrect.\n"
     "Do NOT conclude that the content is absent.\n"
     "Adjust the selector or verify using the snapshot.\n"
@@ -381,7 +382,7 @@ async def main():
         if len(sys.argv) == 2 and sys.argv[1] == "--playwright":
             await client.connect_via_command(
                 "npx",
-                ["@playwright/mcp@latest",  "--isolated", "--allowed-hosts", "nextcloud.local", "--browser", "chromium", "--no-sandbox"],
+                ["@playwright/mcp@latest",  "--isolated", "--allowed-hosts", "wordpress.local", "--browser", "chromium", "--no-sandbox"],
                 env={**os.environ}
             )
         elif len(sys.argv) == 2:

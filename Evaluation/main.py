@@ -380,10 +380,75 @@ def plot_anomaly_count_heatmap(
     labels: Optional[List[str]] = None,
     title: str = "Combo detector anomaly COUNT (train row -> test col)",
     max_lines: int = 5000,
+    zero_diagonal: bool = True,
 ):
-    M, labels = anomaly_count_matrix(files, labels=labels, max_lines=max_lines)
+    M, labels = anomaly_count_matrix(
+        files,
+        labels=labels,
+        max_lines=max_lines,
+        zero_diagonal=zero_diagonal,
+    )
     fig, ax = plt.subplots(figsize=(9, 8))
-    _heatmap(ax, M, labels, title, integer_scale=False) # trying with False, maybe it looks better!
+    _heatmap(ax, M, labels, title, integer_scale=True)
+    _annotate_heatmap(ax, M, fmt="{:d}", fontsize=8)
+    plt.tight_layout()
+    plt.show()
+    return M
+
+
+def missing_combo_count_matrix(
+    files: Sequence[str],
+    *,
+    labels: Optional[List[str]] = None,
+    zero_diagonal: bool = True,
+    max_lines: int = 5000,
+) -> Tuple[np.ndarray, List[str]]:
+    """
+    M[i, j] = total_missing_combo_count when training on files[i]
+    and testing on files[j].
+    This is DIRECTED (not symmetrized).
+    """
+    files = list(files)
+    n = len(files)
+    if labels is None:
+        labels = make_labels(files)
+
+    M = np.zeros((n, n), dtype=int)
+
+    for i in range(n):
+        for j in range(n):
+            if zero_diagonal and i == j:
+                M[i, j] = 0
+                continue
+
+            ev = Evaluation()
+            ev.set_files(files[i], files[j])
+
+            try:
+                M[i, j] = int(ev.combo_detector_total_missing_combos(max_lines=max_lines))
+            except Exception as e:
+                print(f"[WARN] combo_detector_total_missing_combos failed for {files[i]} -> {files[j]}: {e}")
+                M[i, j] = 0
+
+    return M, labels
+
+
+def plot_missing_combo_count_heatmap(
+    files: Sequence[str],
+    *,
+    labels: Optional[List[str]] = None,
+    title: str = "Combo detector TOTAL MISSING COMBOS (train row -> test col)",
+    max_lines: int = 5000,
+    zero_diagonal: bool = True,
+):
+    M, labels = missing_combo_count_matrix(
+        files,
+        labels=labels,
+        max_lines=max_lines,
+        zero_diagonal=zero_diagonal,
+    )
+    fig, ax = plt.subplots(figsize=(9, 8))
+    _heatmap(ax, M, labels, title, integer_scale=True)
     _annotate_heatmap(ax, M, fmt="{:d}", fontsize=8)
     plt.tight_layout()
     plt.show()
@@ -1353,6 +1418,45 @@ def run_deep_learning_report_two_files(
         lr=lr,
     )
 
+def run_inter_event_classifier_report_two_files(
+    file1: str,
+    file2: str,
+    *,
+    max_lines: int = 5000,
+    min_events: int = 20,
+    test_size: float = 0.30,
+    random_state: int = 42,
+    model: Literal["logreg", "svm", "rf"] = "logreg",
+    use_log_transform: bool = True,
+    use_scaling: bool = True,
+    # --- NEW: window classification ---
+    window_mode: Literal["single", "window"] = "single",
+    window_size: int = 5,
+    window_stride: int = 1,
+    drop_last: bool = True,
+    split_within_class: bool = True,
+) -> Dict[str, Any]:
+
+    ev = Evaluation()
+    ev.set_files(file1, file2)
+
+    return ev.inter_event_classifier_report(
+        max_lines=max_lines,
+        min_events=min_events,
+        test_size=test_size,
+        random_state=random_state,
+        model=model,
+        use_log_transform=use_log_transform,
+        use_scaling=use_scaling,
+        window_mode=window_mode,
+        window_size=window_size,
+        window_stride=window_stride,
+        drop_last=drop_last,
+        split_within_class=split_within_class,
+    )
+
+
+
 def get_holdout_indices(
     *,
     indices: dict[str, dict[str, tuple[int, int]]],
@@ -1506,96 +1610,62 @@ def adjust_split_indices_for_windows(
 # -----------------------------
 # Main / examples
 # -----------------------------
-
 if __name__ == "__main__":
-
-    
     singular_flag = False
-    experimentAgg_flag = True
-    totalAgg_flag = False
-
-    indices = None
+    experimentAgg_flag = False
+    totalAgg_flag = True
 
     if singular_flag:
         files = slice_paths(7, "audit")
         labels = make_labels(files)
-    if totalAgg_flag:
-        file1 = all_file_paths.files["totalAgg"]["Human"]["audit"] # Human first
-        file2 = all_file_paths.files["totalAgg"]["AI"]["audit"] # Then AI, important for test-split selection!
-        files = [file1, file2]
-        labels = ["Human", "AI"]
-    if experimentAgg_flag:
+
+    elif experimentAgg_flag:
         files = [all_file_paths.files["experimentAgg"][person]["audit"] for person in all_file_paths.names]
         labels = all_file_paths.names
 
+    elif totalAgg_flag:
+        file1 = all_file_paths.files["totalAgg"]["Human"]["audit"]
+        file2 = all_file_paths.files["totalAgg"]["AI"]["audit"]
+        files = [file1, file2]
+        labels = ["Human", "AI"]
 
-    '''
-    # --- (A) Your original evaluate heatmap (sum of "hits") ---
-    difference_functions = [
-        #make_eval_fn("event_time_evaluate"),         # returns 0/1
-        #make_eval_fn("n_gram_evaluate", window_mode="raw", window_size=5)
-        #make_eval_fn("combo_detector_evaluate"),   # returns 0/1
-        #make_eval_fn("complexity_index_evaluate"),   # can return 0..#metrics
-        make_eval_fn("human_like_evaluate"),
-    ]
+    else:
+        raise ValueError("No dataset selection flag is enabled.")
 
-    plot_pairwise_differences(
-        files=files,
-        difference_functions=difference_functions,
-        labels=labels,
-        title="audit log differences",
-    )
-    '''
-
-    # --- (B) Report/metric plotting examples ---
-
-    # 1) n_gram_report for a single pair
-    run_and_plot_n_gram_report(files[0], files[1], top_k_features=35)
-
-    # 2) combo_detector_anomaly_count heatmap (COUNT, directed)
-    #plot_anomaly_count_heatmap(files, labels=labels, max_lines=100000)
-
-    #3) complexity metric heatmaps (one per metric key)
-    #plot_complexity_delta_heatmaps(files, labels=labels, zero_diagonal=False, max_lines=10000, stride=1, combined_annotate=True, combined_normalization="min_max")
-
-    # 4) one_gram_diff_report for a single pair
-    #run_and_plot_one_gram_diff_report(files[0], files[9], mode="word", top_k=30, use_prob=True)
-    
-    # 5) time analysis
-    '''
-    ind1 = 0
-    ind2 = 1
-    plot_inter_event_distributions(files[ind1], files[ind2], labels=(labels[ind1], labels[ind2]), max_lines=1000000)
-    '''
-
-    # 6) ml-metrics on heatmap
-    '''
-    indices = all_file_paths.calc_indices()
-    train_idx, test_idx = get_holdout_indices(indices=indices, log_type="audit", humans=["Benni"], ais=["GPT4.1_V2"])
-    plot_n_gram_report_metric_heatmaps(
+    # combo detector anomaly count heatmap
+    M_anom = plot_anomaly_count_heatmap(
         files,
         labels=labels,
-        #train_idx=train_idx,
-        #test_idx=test_idx,
-        #pair=(0, 1),   # evaluate only files[0] vs files[1]
-        use_char_tfidf=True,
-
+        title="Combo detector anomaly COUNT (train row -> test col)",
+        max_lines=1_000_000,
+        zero_diagonal=True,
     )
-    '''
+    print("Anomaly count matrix:")
+    print(M_anom)
 
-    # 7) deep-learning method
-    '''
-    indices = all_file_paths.calc_indices()
-    train_idx, test_idx = get_holdout_indices(indices=indices, log_type="audit", humans=["Benni"], ais=["GPT4.1_V2"])
-
-    res = run_deep_learning_report_two_files(
-        files[0], files[1],
-        max_lines=1000000,
-        window_mode="cid",
-        window_size=20,
-        train_idx=train_idx,
-        test_idx=test_idx,
-        epochs=2,
+    # combo detector anomaly count heatmap
+    M_anom = plot_missing_combo_count_heatmap(
+        files,
+        labels=labels,
+        title="Combo detector missing-combo COUNT (train row -> test col)",
+        max_lines=1_000_000,
+        zero_diagonal=True,
     )
-    print(res)
-    '''
+    print("Anomaly count matrix:")
+    print(M_anom)
+
+    # complexity delta heatmaps
+    mats = plot_complexity_delta_heatmaps(
+        files,
+        labels=labels,
+        max_lines=1_000_000,
+        window_size=10,
+        stride=10,
+        annotate=True,
+        zero_diagonal=True,
+        plot_combined=True,
+        combined_normalization="minmax",
+        combined_annotate=True,
+    )
+
+

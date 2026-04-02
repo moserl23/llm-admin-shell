@@ -54,6 +54,48 @@ def fix(session):
     session.run_cmd("sudo systemctl reload apache2 || true")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Problem: WordPress shows "Error establishing a database connection"
 
 if __name__ == "__main__":
@@ -61,7 +103,12 @@ if __name__ == "__main__":
     session.connect_root_setSentinel()
     session.deactivate_history()
 
-    #config(session)   # call this to break
-    fix(session)     # call this to fix
+    config(session)   # call this to break
+    #fix(session)     # call this to fix
 
     session.close()
+
+
+
+
+

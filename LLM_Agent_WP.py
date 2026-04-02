@@ -33,8 +33,8 @@ class AgentConfig:
     # Metrik Prio 1: Least Number of Failures / Least Number of Recursions
 
     # problem description
-    problem_prompt = "Files section of nextcloud shows a problem!"    
 
+    problem_prompt = "WordPress is dead (fatal error / 500)"
     # Summarization behavior
     SUMMARY_THRESHOLD = 36          # summarize after this many new messages
     # Chat context window
@@ -75,6 +75,15 @@ class AgentConfig:
     SUMMARY_MODEL_NAME = "gpt-4.1-mini"
     SUMMARY_MODEL_TEMPERATURE = 0.1
 
+    ### Alternative Modelle:
+    #gpt-4.1
+    #gpt-4.1-mini
+
+    #gpt-4o
+    #gpt-4o-mini
+
+    #gpt-5
+    #gpt-5-mini
 
 
 # ---------- State Class ----------
@@ -419,13 +428,17 @@ def next_command(cmd: str) -> str:
 @tool
 def use_browser(query: str) -> str:
     """
-    Automate browser interaction with the Nextcloud web UI.
+    Automate browser interaction with the WordPress web application.
 
-    Performs the actions described in `query` within the web interface.
-    Each invocation is supposed to attempt at least a login to Nextcloud.
+    This includes both:
+      - The public site (e.g., http://wordpress.local)
+      - The admin interface (/wp-admin)    
+
+    Perform a login if administrative actions are required.
 
     Example:
-      - "Log into Nextcloud and check whether the navigation bar is visible."
+      - "Open wordpress.local and check whether the default example page loads correctly."
+      - "Log into wp-admin and verify that the Dashboard loads without errors."
 
     Returns a brief summary of the actions performed.
     """
@@ -433,7 +446,7 @@ def use_browser(query: str) -> str:
     print("------------------------- Entered use_browser -------------------------")
     print("Query:", query)
 
-    cmd = ["python", "browser_agent.py", "--playwright"]
+    cmd = ["python", "browser_agent_WP.py", "--playwright"]
     
     # Run the command, pass the query via stdin, and capture the output
     process = subprocess.Popen(
@@ -565,24 +578,15 @@ def decision_node(state: AgentState) -> AgentState:
         # --- Role & environment (global invariants) ---
         "You are a Linux web administrator operating on an Ubuntu 24.04 server.\n"
         "You have full root access (sudo -i).\n"
-        "The system runs a LAMP stack (Linux, Apache, MariaDB, PHP) with Nextcloud (PHP 8.3.6).\n"
-        "Standard system utilities are available, including curl and net-tools.\n",
-        "A backup of the Nextcloud instance is available at /var/backups.\n\n"
+        "The system runs a LAMP stack (Linux, Apache, MariaDB, PHP) with WordPress (PHP 8.3.6).\n"
+        "Standard system utilities are available, including curl and net-tools.\n\n",
     ]
-
-    # --- Reference material (optional in-context examples) ---
-    if AgentConfig.ENABLE_IN_CONTEXT_EXAMPLES:
-        system_prompt_parts.extend([
-            "Reference material:\n\n",
-            f"Examples (Admin Routines):\n{examples_content}\n\n",
-            f"Cheat Sheet (Nextcloud occ):\n{cheatsheet_content}\n\n",
-        ])
 
     # --- Available tools ---
     system_prompt_parts.extend([
         "Available tools:\n"
         "1. next_command(cmd: str) — execute one non-interactive shell command.\n"
-        "2. use_browser(query: str) — interact with the Nextcloud web UI (prefer over curl).\n"
+        "2. use_browser(query: str) — interact with the WordPress web UI (prefer over curl).\n"
         "3. use_vim(filename: str, query: str) — edit files with explicit instructions.\n"
         "4. read_file(filename: str) — read file contents (large files are truncated).\n\n",
 
@@ -678,13 +682,15 @@ app = graph.compile()
 
 if __name__ == "__main__":
 
+    # this should not be necessary    
     def handle_sigint(signum, frame):
         print("\n[signal] SIGINT received, cleaning up...")
         cleanup_session()
-        sys.exit(130)  # standard exit code for Ctrl+C
+        raise KeyboardInterrupt
 
     signal.signal(signal.SIGINT, handle_sigint)
 
+    
     result = None   # <-- ensures finally block can access it
     get_session()  # guarantees env init + log offsets exist
 

@@ -142,12 +142,16 @@ class ShellSession:
 
 
     def overwrite_vim(self, updated_content):
-        """Replace the entire current Vim buffer with the provided content (delete all lines, enter insert mode, paste, then exit insert mode)."""
-        self.child.send("\x1b"); self.child.send("\r")
-        self.child.send(":0,$d\r")   # delete all lines
-        self.child.send("i")         # insert mode
-        self.child.send(updated_content)
         self.child.send("\x1b")
+        self.child.send(":set paste\r")
+        self.child.send(":set noautoindent nosmartindent indentexpr=\r")
+        self.child.send(":set formatoptions-=cro comments=\r")
+        self.child.send(":%delete\r")
+        self.child.send("i")
+        self.child.send(updated_content)
+        time.sleep(0.2)
+        self.child.send("\x1b")
+        self.child.send(":set nopaste\r")
 
     def print_file_vim(self):
         """Print the full current Vim buffer to the pexpect output and return the captured text between BEGIN/END markers."""
@@ -342,15 +346,15 @@ def read_new_logs(session):
     and write them to corresponding files in the LOGS/ directory.
     '''
     logs = session.run_cmd('tail -c +$((POS_nextcloud+1)) /var/www/nextcloud/data/nextcloud.log')
-    with open("LOGS/nextcloud.log", "w", encoding="utf-8") as f:
+    with open("BreaksWordPress/LOGS/nextcloud.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_syslog+1)) /var/log/syslog')
-    with open("LOGS/syslog.log", "w", encoding="utf-8") as f:
+    with open("BreaksWordPress/LOGS/syslog.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_authlog+1)) /var/log/auth.log')
-    with open("LOGS/auth.log", "w", encoding="utf-8") as f:
+    with open("BreaksWordPress/LOGS/auth.log", "w", encoding="utf-8") as f:
         f.write(logs)
     logs = session.run_cmd('tail -c +$((POS_audit+1)) /var/log/audit/audit.log', time = 3600) # audit might be big, therefor extract it last.
-    with open("LOGS/audit.log", "w", encoding="utf-8") as f:
+    with open("BreaksWordPress/LOGS/audit.log", "w", encoding="utf-8") as f:
         f.write(logs)
 

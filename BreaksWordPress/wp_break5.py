@@ -16,7 +16,7 @@ def config(session):
 
     # Add an invalid PHP line near the top (after <?php)
     session.run_cmd(
-        rf'''sudo sed -i '2i\this_is_not_valid_php(;' {WP_CONFIG}'''
+        rf"""sudo sed -i "2i\define('WP_DEBUG', true;" {WP_CONFIG}"""
     )
 
     session.run_cmd("sudo systemctl reload apache2 || true")
@@ -31,6 +31,19 @@ def fix(session):
     session.run_cmd("sudo systemctl reload apache2 || true")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Problem: WordPress is dead (500)
 
 if __name__ == "__main__":
@@ -38,7 +51,7 @@ if __name__ == "__main__":
     session.connect_root_setSentinel()
     session.deactivate_history()
 
-    #config(session)   # break
-    fix(session)     # fix
+    config(session)   # break
+    #fix(session)     # fix
 
     session.close()
