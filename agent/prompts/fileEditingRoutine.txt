@@ -1,0 +1,20 @@
+Read (keep output short):
+cat /etc/myapp/config.conf | head -n 50
+
+Overwrite/replace a file:
+cat <<'EOF' > /etc/myapp/config.conf
+# My config
+option_a = true
+option_b = 42
+EOF
+
+Append to a file:
+cat <<'EOF' >> /etc/myapp/config.conf
+# Extra settings
+option_c = enabled
+EOF
+
+In-place single-line edit (sed -i, portable regex):
+sed -ri 's|^[[:space:]]*option_b[[:space:]]*=.*$|option_b = 99|' /etc/myapp/config.conf
+
+After editing configs, validate and reload relevant services

@@ -1,0 +1,19 @@
+# Environment
+.env
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Agent-generated troubleshooting log captures
+agent/scenarios/**/LOGS/
+
+# Data folders (ignore everything inside)
+Data/
+Data_WP/
+data/
+logs/
+25_data_split_result/
+50_data_split_result/
+ZZZZ_playground/

@@ -1,0 +1,9 @@
+WordPress
+
+--> LAMP-Stack: Linux, Apache, MariaDB, PHP
+
+
+wordpress.local/wp-admin login:
+--> username: wpadmin
+--> password: changeme
+
